@@ -11,13 +11,9 @@
 
 ![系统架构](main/docs/arch/system-arch.png)
 
-**请求处理链路**（bracket-style DSL → 枚举白名单 → 参数化 SQL → GIN 索引）：
 
-![请求处理链路](main/docs/arch/request-chain.png)
 
-**ETL 数据导入流水线**（异构 XLS → 归一化 → 幂等写入）：
-
-![ETL 数据导入流水线](main/docs/arch/etl-pipeline.png)
+![架构分层](main/docs/arch/architecture-detailed.png) 
 
 ---
 
