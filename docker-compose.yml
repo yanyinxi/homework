@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: asset_postgres
+    environment:
+      POSTGRES_DB: asset_db
+      POSTGRES_USER: asset
+      POSTGRES_PASSWORD: asset123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asset -d asset_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./main/backend
+      dockerfile: Dockerfile
+    container_name: asset_backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/asset_db
+      SPRING_DATASOURCE_USERNAME: asset
+      SPRING_DATASOURCE_PASSWORD: asset123
+      SPRING_PROFILES_ACTIVE: docker
+    command: ["--ingest=all"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./main/frontend
+      dockerfile: Dockerfile
+    container_name: asset_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

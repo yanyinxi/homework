@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.homework.asset.mapper.AssetMapper">
+
+    <!--
+        过滤条件片段，selectByDsl 和 countByDsl 共用，保证分页 total 与列表条件一致。
+        安全：值全部 #{}，字段名内置到 <choose>，不接受用户字符串拼 SQL。
+    -->
+    <sql id="filters">
+        <if test="params.id != null">AND id = #{params.id}::uuid</if>
+        <if test="params.status != null">AND status = #{params.status}</if>
+        <if test="params.statusNe != null">AND status != #{params.statusNe}</if>
+        <if test="params.statusIn != null">AND status = ANY(#{params.statusIn}::text[])</if>
+        <if test="params.uploader != null">AND uploader = #{params.uploader}</if>
+        <if test="params.uploaderLike != null">AND uploader ILIKE '%' || #{params.uploaderLike} || '%'</if>
+        <if test="params.city != null">AND city = #{params.city}</if>
+        <if test="params.platform != null">AND platform = #{params.platform}</if>
+        <if test="params.titleLike != null">AND title ILIKE '%' || #{params.titleLike} || '%'</if>
+        <if test="params.fileSizeBytesGt != null">AND file_size_bytes &gt; #{params.fileSizeBytesGt}</if>
+        <if test="params.fileSizeBytesGte != null">AND file_size_bytes &gt;= #{params.fileSizeBytesGte}</if>
+        <if test="params.fileSizeBytesLt != null">AND file_size_bytes &lt; #{params.fileSizeBytesLt}</if>
+        <if test="params.fileSizeBytesLte != null">AND file_size_bytes &lt;= #{params.fileSizeBytesLte}</if>
+        <if test="params.uploadedAtGt != null">AND uploaded_at &gt; #{params.uploadedAtGt}</if>
+        <if test="params.uploadedAtGte != null">AND uploaded_at &gt;= #{params.uploadedAtGte}</if>
+        <if test="params.uploadedAtLt != null">AND uploaded_at &lt; #{params.uploadedAtLt}</if>
+        <if test="params.uploadedAtLte != null">AND uploaded_at &lt;= #{params.uploadedAtLte}</if>
+        <!-- tags @> ARRAY[?]::text[] — PostgreSQL 数组包含，值通过 #{} 参数化 -->
+        <if test="params.tagsHas != null">AND tags @> ARRAY[#{params.tagsHas}]::text[]</if>
+    </sql>
+
+    <select id="selectByDsl" resultType="java.util.Map">
+        SELECT
+        <choose>
+            <when test="fields != null and !fields.isEmpty()">
+                <foreach collection="fields" item="f" separator=",">
+                    <choose>
+                        <when test="f == 'id'">id</when>
+                        <when test="f == 'title'">title</when>
+                        <when test="f == 'uploader'">uploader</when>
+                        <when test="f == 'uploadedAt'">uploaded_at AS "uploadedAt"</when>
+                        <when test="f == 'fileSizeBytes'">file_size_bytes AS "fileSizeBytes"</when>
+                        <when test="f == 'status'">status</when>
+                        <when test="f == 'tags'">tags</when>
+                        <when test="f == 'city'">city</when>
+                        <when test="f == 'platform'">platform</when>
+                        <when test="f == 'reviewer'">reviewer</when>
+                        <when test="f == 'remark'">remark</when>
+                        <when test="f == 'resolution'">resolution</when>
+                        <when test="f == 'durationSec'">duration_sec AS "durationSec"</when>
+                        <when test="f == 'sourceDataset'">source_dataset AS "sourceDataset"</when>
+                        <when test="f == 'sourceId'">source_id AS "sourceId"</when>
+                        <when test="f == 'ingestedAt'">ingested_at AS "ingestedAt"</when>
+                    </choose>
+                </foreach>
+            </when>
+            <otherwise>
+                id, title, uploader,
+                uploaded_at AS "uploadedAt",
+                file_size_bytes AS "fileSizeBytes",
+                status, tags, city, platform, reviewer, remark, resolution,
+                duration_sec AS "durationSec",
+                source_dataset AS "sourceDataset",
+                source_id AS "sourceId",
+                ingested_at AS "ingestedAt"
+            </otherwise>
+        </choose>
+        FROM assets
+        <where><include refid="filters"/></where>
+        <if test="orderClauses != null and !orderClauses.isEmpty()">
+            ORDER BY
+            <foreach collection="orderClauses" item="clause" separator=",">
+                <choose>
+                    <when test="clause.columnName == 'uploaded_at'">uploaded_at</when>
+                    <when test="clause.columnName == 'file_size_bytes'">file_size_bytes</when>
+                    <when test="clause.columnName == 'title'">title</when>
+                    <when test="clause.columnName == 'uploader'">uploader</when>
+                    <when test="clause.columnName == 'status'">status</when>
+                    <when test="clause.columnName == 'city'">city</when>
+                    <when test="clause.columnName == 'ingested_at'">ingested_at</when>
+                    <when test="clause.columnName == 'id'">id</when>
+                    <otherwise>uploaded_at</otherwise>
+                </choose>
+                <choose>
+                    <when test="clause.direction == 'DESC'"> DESC</when>
+                    <otherwise> ASC</otherwise>
+                </choose>
+            </foreach>
+        </if>
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByDsl" resultType="long">
+        SELECT COUNT(*) FROM assets
+        <where><include refid="filters"/></where>
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO assets
+        (source_dataset, source_id, title, uploader, uploaded_at,
+         file_size_bytes, status, tags, city, platform, reviewer, remark,
+         resolution, duration_sec, extra, raw_record)
+        VALUES
+        (#{sourceDataset}, #{sourceId}, #{title}, #{uploader}, #{uploadedAt},
+         #{fileSizeBytes}, #{status},
+         #{tags, typeHandler=com.homework.asset.config.PgStringArrayTypeHandler},
+         #{city}, #{platform}, #{reviewer}, #{remark},
+         #{resolution}, #{durationSec},
+         #{extra, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler}::jsonb,
+         #{rawRecord, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler}::jsonb)
+        ON CONFLICT (source_dataset, source_id)
+        DO UPDATE SET
+            title           = EXCLUDED.title,
+            uploader        = EXCLUDED.uploader,
+            uploaded_at     = EXCLUDED.uploaded_at,
+            file_size_bytes = EXCLUDED.file_size_bytes,
+            status          = EXCLUDED.status,
+            tags            = EXCLUDED.tags,
+            city            = EXCLUDED.city,
+            platform        = EXCLUDED.platform,
+            reviewer        = EXCLUDED.reviewer,
+            remark          = EXCLUDED.remark,
+            resolution      = EXCLUDED.resolution,
+            duration_sec    = EXCLUDED.duration_sec,
+            extra           = EXCLUDED.extra,
+            raw_record      = EXCLUDED.raw_record,
+            ingested_at     = now()
+    </insert>
+
+    <!-- Q1：审核通过素材，各上传人平均文件大小 -->
+    <select id="selectUploaderAvgSize" resultType="java.util.Map">
+        SELECT uploader,
+               COUNT(*)                                                    AS "approvedCount",
+               ROUND(AVG(file_size_bytes))                                 AS "avgSizeBytes",
+               pg_size_pretty(ROUND(AVG(file_size_bytes))::bigint)         AS "avgSizeHuman"
+        FROM assets
+        WHERE status = 'approved'
+        GROUP BY uploader
+        ORDER BY "avgSizeBytes" DESC
+    </select>
+
+    <!-- Q2：按标签统计素材数量，Top N -->
+    <select id="selectTopTags" resultType="java.util.Map">
+        SELECT tag, COUNT(*) AS "count"
+        FROM assets, UNNEST(tags) AS tag
+        GROUP BY tag
+        ORDER BY "count" DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- Q3：各平台审核通过率 -->
+    <select id="selectPlatformApprovalRate" resultType="java.util.Map">
+        WITH base AS (
+            SELECT platform, status, COUNT(*) AS cnt
+            FROM assets
+            WHERE platform IS NOT NULL
+            GROUP BY platform, status
+        )
+        SELECT platform,
+               SUM(cnt)                                                              AS "total",
+               COALESCE(SUM(cnt) FILTER (WHERE status = 'approved'), 0)              AS "approved",
+               ROUND(100.0 * COALESCE(SUM(cnt) FILTER (WHERE status = 'approved'), 0)
+                   / NULLIF(SUM(cnt), 0), 2)                                         AS "approvalRate"
+        FROM base
+        GROUP BY platform
+        ORDER BY "approvalRate" DESC NULLS LAST
+    </select>
+
+</mapper>

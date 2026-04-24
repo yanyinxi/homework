@@ -1,0 +1,39 @@
+# Claude Code 本地配置（仅本地，不提交）
+.claude/
+
+# IDE
+.idea/
+.vscode/
+.playwright-mcp/
+*.iml
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Java 构建产物
+target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+
+# Vue / Node
+node_modules/
+dist/
+*.local
+.vite/
+
+# 日志与临时文件
+*.log
+logs/
+.tmp/
+
+# 环境变量（不提交密钥）
+.env
+.env.*
+!.env.example
