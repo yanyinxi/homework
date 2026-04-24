@@ -2,20 +2,39 @@
 
 **核心挑战**：三份来自不同业务系统的 XLS 文件（或更多），字段命名语言、时间格式（Excel序列号整数/含小数/Unix秒）、大小单位（字符串"63MB"/字节整数/数值+单位双列）、状态枚举（中文/英文/混合）、标签分隔符（分号/逗号/Python list字符串）全部不一致。这是真正的**异构数据集成**问题，不是简单的字段映射。
 
-**结果**：74 源行 → 69 有效记录（3 条空标题行级拒绝，2 条重复幂等合并）；API P99 < 2ms；19/19 验收全通过；`bash start-docker.sh` 一键启动。
 
 **技术栈**：Java 17 · Spring Boot 3.3 · MyBatis-Plus · PostgreSQL 15 · Flyway · Testcontainers · Vue 3 · Docker Compose
+
+---
+
+## 系统架构
+
+![系统架构](main/docs/arch/system-arch.png)
+
+**请求处理链路**（bracket-style DSL → 枚举白名单 → 参数化 SQL → GIN 索引）：
+
+![请求处理链路](main/docs/arch/request-chain.png)
+
+**ETL 数据导入流水线**（异构 XLS → 归一化 → 幂等写入）：
+
+![ETL 数据导入流水线](main/docs/arch/etl-pipeline.png)
 
 ---
 
 ## 快速启动
 
 ```bash
+第一步：
 git clone https://github.com/yanyinxi/homework.git && cd homework
 
-bash start-docker.sh        # Docker（推荐）：自动处理端口冲突 + 数据导入
-bash start-local.sh         # macOS/Linux：脚本自动安装 Java/Maven/Node/PG
-.\start-local.ps1           # Windows（管理员 PS）：winget 自动安装依赖
+
+第二步：（根据自己电脑环境， 三选一）
+1. bash start-docker.sh        # Docker（推荐）：自动处理端口冲突 + 数据导入
+
+2. bash start-local.sh         # macOS/Linux：脚本自动安装 Java/Maven/Node/PG
+
+3. .\start-local.ps1           # Windows（管理员 PS）：winget 自动安装依赖
+
 ```
 
 | 服务 | Docker | 本地 |
