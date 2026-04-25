@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -37,6 +38,13 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiEnvelope<Void>> handleConstraintViolation(
       ConstraintViolationException ex) {
     return ResponseEntity.badRequest().body(ApiEnvelope.error(400, ex.getMessage()));
+  }
+
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<ApiEnvelope<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+    log.warn("File upload size exceeded: {}", ex.getMessage());
+    return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+        .body(ApiEnvelope.error(413, "File size exceeds the maximum allowed limit (10MB)"));
   }
 
   @ExceptionHandler(NoResourceFoundException.class)

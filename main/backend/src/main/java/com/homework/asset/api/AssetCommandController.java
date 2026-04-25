@@ -1,6 +1,7 @@
 package com.homework.asset.api;
 
 import com.homework.asset.api.dto.ApiEnvelope;
+import com.homework.asset.api.dto.DeleteBatchRequest;
 import com.homework.asset.api.dto.DeleteResult;
 import com.homework.asset.api.dto.UploadResult;
 import com.homework.asset.config.AssetMetrics;
@@ -9,9 +10,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +36,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/v1/assets")
 @SecurityRequirement(name = "ApiKeyAuth")
+@Validated
 public class AssetCommandController {
 
   private final AssetCommandService commandService;
@@ -51,7 +58,11 @@ public class AssetCommandController {
   @PreAuthorize("hasRole('USER')")
   public ApiEnvelope<UploadResult> uploadExcel(
       @Parameter(description = "Excel 文件（.xls 或 .xlsx）") @RequestParam("file") MultipartFile file,
-      @Parameter(description = "数据集编号（1/2/3），不传则自动识别") @RequestParam(required = false) Integer dataset) {
+      @Parameter(description = "数据集编号（1/2/3），不传则自动识别")
+      @RequestParam(required = false)
+      @Min(value = 1, message = "Dataset must be 1, 2, or 3")
+      @Max(value = 3, message = "Dataset must be 1, 2, or 3")
+      Integer dataset) {
 
     long start = System.currentTimeMillis();
 
@@ -80,7 +91,11 @@ public class AssetCommandController {
   @DeleteMapping("/{id}")
   @PreAuthorize("hasRole('ADMIN')")
   public ApiEnvelope<DeleteResult> deleteById(
-      @Parameter(description = "素材 UUID") @PathVariable String id) {
+      @Parameter(description = "素材 UUID")
+      @PathVariable
+      @Pattern(regexp = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+               message = "Invalid UUID format")
+      String id) {
 
     long start = System.currentTimeMillis();
     DeleteResult result = commandService.deleteById(id);
@@ -95,10 +110,10 @@ public class AssetCommandController {
   @DeleteMapping("/batch")
   @PreAuthorize("hasRole('ADMIN')")
   public ApiEnvelope<DeleteResult> deleteBatch(
-      @Parameter(description = "素材 ID 列表") @RequestBody List<String> ids) {
+      @Valid @RequestBody DeleteBatchRequest request) {
 
     long start = System.currentTimeMillis();
-    DeleteResult result = commandService.deleteBatch(ids);
+    DeleteResult result = commandService.deleteBatch(request.ids());
     metrics.recordDeleteRequest(System.currentTimeMillis() - start);
 
     return ApiEnvelope.ok(result);
@@ -110,9 +125,18 @@ public class AssetCommandController {
   @DeleteMapping("/by-query")
   @PreAuthorize("hasRole('ADMIN')")
   public ApiEnvelope<DeleteResult> deleteByQuery(
-      @Parameter(description = "状态过滤") @RequestParam(required = false) String status,
-      @Parameter(description = "上传人过滤") @RequestParam(required = false) String uploader,
-      @Parameter(description = "数据集来源过滤") @RequestParam(required = false) Integer sourceDataset) {
+      @Parameter(description = "状态过滤 (pending/approved/rejected)")
+      @RequestParam(required = false)
+      @Pattern(regexp = "^(pending|approved|rejected)?$", message = "Status must be pending, approved, or rejected")
+      String status,
+      @Parameter(description = "上传人过滤")
+      @RequestParam(required = false)
+      String uploader,
+      @Parameter(description = "数据集来源过滤 (1/2/3)")
+      @RequestParam(required = false)
+      @Min(value = 1, message = "SourceDataset must be 1, 2, or 3")
+      @Max(value = 3, message = "SourceDataset must be 1, 2, or 3")
+      Integer sourceDataset) {
 
     long start = System.currentTimeMillis();
     DeleteResult result = commandService.deleteByQuery(status, uploader, sourceDataset);

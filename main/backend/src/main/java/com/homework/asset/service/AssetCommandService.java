@@ -75,13 +75,21 @@ public class AssetCommandService {
       }
 
       if (!validAssets.isEmpty()) {
-        ingestBatchService.upsertBatch(adapter.datasetNumber(), validAssets);
+        // 统计实际插入和更新的数量
+        int[] counts = ingestBatchService.upsertBatchWithStats(adapter.datasetNumber(), validAssets);
+        int inserted = counts[0];
+        int updated = counts[1];
+
+        log.info("Excel import completed: {} rows read, {} inserted, {} updated, {} rejected",
+            rows.size(), inserted, updated, rejectedRecords.size());
+
+        return UploadResult.of(rows.size(), inserted, updated, rejectedRecords);
       }
 
-      log.info("Excel import completed: {} rows read, {} valid, {} rejected",
-          rows.size(), validAssets.size(), rejectedRecords.size());
+      log.info("Excel import completed: {} rows read, 0 valid, {} rejected",
+          rows.size(), rejectedRecords.size());
 
-      return UploadResult.of(rows.size(), validAssets.size(), 0, rejectedRecords);
+      return UploadResult.of(rows.size(), 0, 0, rejectedRecords);
 
     } catch (IOException e) {
       throw new ApiException(500, "Failed to read Excel file: " + e.getMessage());

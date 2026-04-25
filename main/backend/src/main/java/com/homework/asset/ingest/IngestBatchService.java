@@ -5,14 +5,12 @@ import com.homework.asset.mapper.AssetMapper;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * ETL 批次写入服务。
- *
- * 独立 Spring Bean 是为了让 @Transactional 通过代理生效——
- * IngestRunner 调用自身方法时 Spring 代理不介入，事务不起作用。
  */
 @Service
 public class IngestBatchService {
@@ -20,12 +18,13 @@ public class IngestBatchService {
   private static final Logger log = LoggerFactory.getLogger(IngestBatchService.class);
 
   private final AssetMapper assetMapper;
+  private final JdbcTemplate jdbcTemplate;
 
-  public IngestBatchService(AssetMapper assetMapper) {
+  public IngestBatchService(AssetMapper assetMapper, JdbcTemplate jdbcTemplate) {
     this.assetMapper = assetMapper;
+    this.jdbcTemplate = jdbcTemplate;
   }
 
-  /** 批次级事务：任意行 upsert 失败则整批回滚。 */
   @Transactional
   public int upsertBatch(int datasetNum, List<Asset> assets) {
     for (Asset asset : assets) {
@@ -33,5 +32,31 @@ public class IngestBatchService {
     }
     log.info("数据集 {} 批次提交，共 upsert {} 条", datasetNum, assets.size());
     return assets.size();
+  }
+
+  @Transactional
+  public int[] upsertBatchWithStats(int datasetNum, List<Asset> assets) {
+    int inserted = 0;
+    int updated = 0;
+
+    for (Asset asset : assets) {
+      boolean exists = checkExists(asset.getSourceDataset(), asset.getSourceId());
+      assetMapper.upsert(asset);
+      if (exists) {
+        updated++;
+      } else {
+        inserted++;
+      }
+    }
+
+    log.info("数据集 {} 批次提交：新增 {} 条，更新 {} 条", datasetNum, inserted, updated);
+    return new int[]{inserted, updated};
+  }
+
+  private boolean checkExists(int sourceDataset, String sourceId) {
+    Integer count = jdbcTemplate.queryForObject(
+        "SELECT COUNT(*) FROM assets WHERE source_dataset = ? AND source_id = ?",
+        Integer.class, sourceDataset, sourceId);
+    return count != null && count > 0;
   }
 }
