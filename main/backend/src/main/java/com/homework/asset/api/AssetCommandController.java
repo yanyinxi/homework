@@ -1,20 +1,5 @@
 package com.homework.asset.api;
 
-import com.homework.asset.api.dto.ApiEnvelope;
-import com.homework.asset.api.dto.DeleteBatchRequest;
-import com.homework.asset.api.dto.DeleteResult;
-import com.homework.asset.api.dto.UploadResult;
-import com.homework.asset.config.AssetMetrics;
-import com.homework.asset.service.AssetCommandService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Pattern;
-import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -26,6 +11,22 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import com.homework.asset.api.dto.ApiEnvelope;
+import com.homework.asset.api.dto.DeleteBatchRequest;
+import com.homework.asset.api.dto.DeleteResult;
+import com.homework.asset.api.dto.UploadResult;
+import com.homework.asset.config.AssetMetrics;
+import com.homework.asset.service.AssetCommandService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 
 /**
  * 素材写入接口（上传、删除）。

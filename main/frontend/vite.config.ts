@@ -18,6 +18,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path,
       },
+      '/actuator': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
   build: {

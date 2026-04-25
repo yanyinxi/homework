@@ -6,6 +6,7 @@
 .vscode/
 .playwright-mcp/
 *.iml
+.github/
 
 # macOS
 .DS_Store

@@ -33,7 +33,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
   /** 无需认证的公开路径 */
   private static final String[] PUBLIC_PATHS = {
       "/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics",
-      "/swagger-ui", "/api-docs", "/swagger-ui.html"
+      "/swagger-ui", "/api-docs", "/swagger-ui.html", "/v3/api-docs", "/webjars"
   };
   private final ApiKeyProperties properties;
 

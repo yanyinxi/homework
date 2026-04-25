@@ -64,9 +64,12 @@ public class ApiSecurityConfig {
             auth ->
                 auth
                     .requestMatchers(
-                        "/actuator/health", "/actuator/info", "/actuator/prometheus")
+                        "/actuator/health", "/actuator/info", "/actuator/prometheus",
+                        "/actuator/metrics", "/actuator/metrics/**")
                     .permitAll()
-                    .requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html")
+                    .requestMatchers(
+                        "/swagger-ui/**", "/api-docs/**", "/swagger-ui.html",
+                        "/v3/api-docs", "/v3/api-docs/**", "/webjars/**")
                     .permitAll()
                     .requestMatchers("/api/**")
                     .authenticated()
