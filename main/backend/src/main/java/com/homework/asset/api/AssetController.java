@@ -1,7 +1,9 @@
 package com.homework.asset.api;
 
 import com.homework.asset.api.dto.ApiEnvelope;
+import com.homework.asset.api.dto.CursorPage;
 import com.homework.asset.api.dto.PagedResponse;
+import com.homework.asset.config.AssetMetrics;
 import com.homework.asset.service.AssetQueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,32 +17,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 素材只读 API 控制器。 */
 @Tag(name = "Assets", description = "视频素材数据查询接口")
 @RestController
 @RequestMapping("/api/v1/assets")
 public class AssetController {
 
   private final AssetQueryService queryService;
+  private final AssetMetrics metrics;
 
-  public AssetController(AssetQueryService queryService) {
+  public AssetController(AssetQueryService queryService, AssetMetrics metrics) {
     this.queryService = queryService;
+    this.metrics = metrics;
   }
 
-  /**
-   * 列出素材数据（支持多字段过滤、排序、分页、稀疏字段集）。
-   *
-   * <pre>
-   * GET /api/v1/assets?status=approved&sort=uploaded_at:desc&page=1&page_size=20
-   * GET /api/v1/assets?file_size_bytes[lte]=524288000&tags[has]=节日
-   * GET /api/v1/assets?fields=title,status,uploader
-   * </pre>
-   */
   @Operation(
-      summary = "列出素材",
+      summary = "列出素材（OFFSET 分页）",
       description =
           "支持过滤: field=v, field[eq/ne/gt/gte/lt/lte/in/like/has]=v；"
-              + "排序: sort=field:dir；稀疏字段: fields=a,b,c；分页: page&page_size")
+              + "排序: sort=field:dir；稀疏字段: fields=a,b,c；分页: page&page_size。"
+              + "注意：大页码时性能下降，建议使用 /cursor 端点。")
   @Parameters({
     @Parameter(name = "status",            description = "等值过滤：approved | pending | rejected",                example = "approved"),
     @Parameter(name = "uploader",          description = "等值过滤或模糊匹配：uploader=张三 / uploader[like]=张",   example = "张三"),
@@ -54,17 +49,34 @@ public class AssetController {
   @GetMapping
   public ApiEnvelope<PagedResponse<Map<String, Object>>> listAssets(
       @Parameter(hidden = true) @RequestParam MultiValueMap<String, String> allParams) {
-    return ApiEnvelope.ok(queryService.listAssets(allParams));
+    long start = System.currentTimeMillis();
+    PagedResponse<Map<String, Object>> result = queryService.listAssets(allParams);
+    metrics.recordListRequest(System.currentTimeMillis() - start);
+    return ApiEnvelope.ok(result);
   }
 
-  /**
-   * 获取单条素材详情。
-   *
-   * <pre>
-   * GET /api/v1/assets/{id}
-   * GET /api/v1/assets/{id}?fields=title,status,uploader
-   * </pre>
-   */
+  @Operation(
+      summary = "列出素材（Cursor 分页）",
+      description =
+          "Keyset 分页，O(1) 性能，适合大数据集和无限滚动场景。"
+              + "排序固定为 uploaded_at DESC, id DESC。")
+  @Parameters({
+    @Parameter(name = "cursor", description = "Base64 编码的游标，首次请求不传", example = ""),
+    @Parameter(name = "page_size", description = "每页条数（默认 20，最大 200）", example = "20"),
+    @Parameter(name = "status", description = "等值过滤：approved | pending | rejected", example = "approved"),
+    @Parameter(name = "tags[has]", description = "标签包含", example = "节日"),
+  })
+  @GetMapping("/cursor")
+  public ApiEnvelope<CursorPage<Map<String, Object>>> listAssetsByCursor(
+      @Parameter(hidden = true) @RequestParam MultiValueMap<String, String> allParams,
+      @Parameter(description = "游标，首次请求不传") @RequestParam(required = false) String cursor,
+      @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") int page_size) {
+    long start = System.currentTimeMillis();
+    CursorPage<Map<String, Object>> result = queryService.listAssetsByCursor(allParams, cursor, Math.min(page_size, 200));
+    metrics.recordListRequest(System.currentTimeMillis() - start);
+    return ApiEnvelope.ok(result);
+  }
+
   @Operation(summary = "获取素材详情", description = "支持稀疏字段集: ?fields=title,status,uploader")
   @GetMapping("/{id}")
   public ApiEnvelope<Map<String, Object>> getAssetById(
@@ -72,6 +84,9 @@ public class AssetController {
       @PathVariable String id,
       @Parameter(description = "稀疏字段集：仅返回指定列，逗号分隔", example = "title,status,uploader")
       @RequestParam(required = false) String fields) {
-    return ApiEnvelope.ok(queryService.getAssetById(id, fields));
+    long start = System.currentTimeMillis();
+    Map<String, Object> result = queryService.getAssetById(id, fields);
+    metrics.recordDetailRequest(System.currentTimeMillis() - start);
+    return ApiEnvelope.ok(result);
   }
 }

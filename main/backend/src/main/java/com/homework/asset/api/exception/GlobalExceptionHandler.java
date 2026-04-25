@@ -9,8 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-/** 统一异常处理器，捕获所有 ApiException 并返回标准 ApiEnvelope 格式。 */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -37,6 +37,17 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiEnvelope<Void>> handleConstraintViolation(
       ConstraintViolationException ex) {
     return ResponseEntity.badRequest().body(ApiEnvelope.error(400, ex.getMessage()));
+  }
+
+  @ExceptionHandler(NoResourceFoundException.class)
+  public ResponseEntity<ApiEnvelope<Void>> handleNoResourceFound(NoResourceFoundException ex) {
+    String path = ex.getResourcePath();
+    if (path != null && (path.contains("favicon") || path.contains("robots.txt"))) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+    }
+    log.warn("Resource not found: {}", path);
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(ApiEnvelope.error(404, "Resource not found: " + path));
   }
 
   @ExceptionHandler(Exception.class)

@@ -1,0 +1,61 @@
+{
+  "datasets": [
+    {
+      "id": "dataset_001",
+      "name": "素材数据集1",
+      "description": "中文字段，文件大小单位MB，上传日期为Excel序列号",
+      "filePattern": "素材数据集1.xls",
+      "fieldMappings": {
+        "素材编号": {"target": "source_id", "type": "string"},
+        "标题": {"target": "title", "type": "string"},
+        "上传人": {"target": "uploader", "type": "string"},
+        "上传日期": {"target": "uploaded_at", "type": "excel_date"},
+        "文件大小(MB)": {"target": "file_size_bytes", "type": "size_with_unit"},
+        "审核状态": {"target": "status", "type": "status"},
+        "标签": {"target": "tags", "type": "tags", "separator": ";"},
+        "所在城市": {"target": "city", "type": "string"},
+        "审核人": {"target": "reviewer", "type": "string"},
+        "备注": {"target": "remark", "type": "string"}
+      },
+      "defaults": {
+        "platform": null
+      }
+    },
+    {
+      "id": "dataset_002", 
+      "name": "素材数据集2",
+      "description": "英文字段，分辨率字段，文件大小为字节",
+      "filePattern": "素材数据集2.xls",
+      "fieldMappings": {
+        "asset_id": {"target": "source_id", "type": "string"},
+        "title": {"target": "title", "type": "string"},
+        "uploader": {"target": "uploader", "type": "string"},
+        "upload_time": {"target": "uploaded_at", "type": "excel_date"},
+        "file_size": {"target": "file_size_bytes", "type": "bytes"},
+        "status": {"target": "status", "type": "status"},
+        "tags": {"target": "tags", "type": "tags", "separator": ","},
+        "city": {"target": "city", "type": "string"},
+        "resolution": {"target": "resolution", "type": "string"},
+        "platform": {"target": "platform", "type": "platform"}
+      }
+    },
+    {
+      "id": "dataset_003",
+      "name": "素材数据集3", 
+      "description": "Unix时间戳，时长字段，平台字段混用",
+      "filePattern": "素材数据集3.xls",
+      "fieldMappings": {
+        "video_id": {"target": "source_id", "type": "string"},
+        "title": {"target": "title", "type": "string"},
+        "uploader": {"target": "uploader", "type": "string"},
+        "upload_timestamp": {"target": "uploaded_at", "type": "unix_timestamp"},
+        "file_size": {"target": "file_size_bytes", "type": "bytes"},
+        "status": {"target": "status", "type": "status"},
+        "tags": {"target": "tags", "type": "tags_python_list"},
+        "city": {"target": "city", "type": "string"},
+        "platform": {"target": "platform", "type": "platform"},
+        "duration": {"target": "duration_sec", "type": "integer"}
+      }
+    }
+  ]
+}

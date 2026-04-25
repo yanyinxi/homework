@@ -1,10 +1,13 @@
 package com.homework.asset.service;
 
+import com.homework.asset.api.dto.CursorPage;
 import com.homework.asset.api.dto.PagedResponse;
 import com.homework.asset.api.exception.ApiException;
 import com.homework.asset.api.query.QueryDslParser;
 import com.homework.asset.api.query.QueryDslParser.ParsedQuery;
 import com.homework.asset.mapper.AssetMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +24,6 @@ public class AssetQueryService {
     this.assetMapper = assetMapper;
   }
 
-  /** 解析 HTTP 查询参数，执行过滤/排序/分页，返回分页结果。 */
   public PagedResponse<Map<String, Object>> listAssets(MultiValueMap<String, String> params) {
     ParsedQuery query = QueryDslParser.parse(params);
     List<Map<String, Object>> items = assetMapper.selectByDsl(
@@ -30,7 +32,48 @@ public class AssetQueryService {
     return PagedResponse.of(items, total, query.page(), query.pageSize());
   }
 
-  /** 按 UUID 查询单条素材，fields 为空时返回全部字段。 */
+  /**
+   * Keyset/Cursor 分页。用于大数据集场景，避免 OFFSET 性能问题。
+   *
+   * @param params 过滤参数
+   * @param cursor Base64 编码的游标，格式为 "uploaded_at|id"
+   * @param pageSize 每页条数
+   * @return 分页结果，包含 nextCursor
+   */
+  public CursorPage<Map<String, Object>> listAssetsByCursor(
+      MultiValueMap<String, String> params, String cursor, int pageSize) {
+
+    Map<String, Object> filterParams = parseCursorFilters(params);
+
+    String cursorUploadedAt = null;
+    String cursorId = null;
+
+    if (cursor != null && !cursor.isBlank()) {
+      String[] parts = decodeCursor(cursor);
+      if (parts.length == 2) {
+        cursorUploadedAt = parts[0];
+        cursorId = parts[1];
+      }
+    }
+
+    int limit = pageSize + 1;
+    List<Map<String, Object>> items =
+        assetMapper.selectByCursor(filterParams, Collections.emptyList(), cursorUploadedAt, cursorId, limit);
+
+    String nextCursor = null;
+    if (items.size() > pageSize) {
+      Map<String, Object> lastItem = items.get(pageSize - 1);
+      Object uploadedAt = lastItem.get("uploadedAt");
+      Object id = lastItem.get("id");
+      if (uploadedAt != null && id != null) {
+        nextCursor = encodeCursor(uploadedAt.toString(), id.toString());
+      }
+      items = items.subList(0, pageSize);
+    }
+
+    return CursorPage.of(items, nextCursor, pageSize);
+  }
+
   public Map<String, Object> getAssetById(String id, String fields) {
     try {
       UUID.fromString(id);
@@ -43,5 +86,24 @@ public class AssetQueryService {
     return assetMapper.selectByDsl(Map.of("id", id), fieldList, List.of(), 1, 0)
         .stream().findFirst()
         .orElseThrow(() -> new ApiException(404, "Asset not found: " + id));
+  }
+
+  private Map<String, Object> parseCursorFilters(MultiValueMap<String, String> params) {
+    ParsedQuery query = QueryDslParser.parse(params);
+    return query.params();
+  }
+
+  private String[] decodeCursor(String cursor) {
+    try {
+      String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+      return decoded.split("\\|", 2);
+    } catch (IllegalArgumentException e) {
+      throw new ApiException(400, "Invalid cursor format");
+    }
+  }
+
+  private String encodeCursor(String uploadedAt, String id) {
+    String raw = uploadedAt + "|" + id;
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
   }
 }

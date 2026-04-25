@@ -28,7 +28,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/AssetDetail.vue'),
     meta: { title: '素材详情' },
   },
-  // 404 重定向到首页
+  {
+    path: '/monitoring',
+    name: 'Monitoring',
+    component: () => import('@/pages/Monitoring.vue'),
+    meta: { title: '运维监控' },
+  },
   {
     path: '/:pathMatch(.*)*',
     redirect: '/',

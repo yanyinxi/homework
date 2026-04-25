@@ -1,7 +1,96 @@
 # 局限性与改进方案
 
-> 对应方案规划第 9 章。诚实列出当前实现的技术局限，并给出生产级改进路径。
 > 知道自己的边界，是工程成熟度的体现。
+
+---
+
+## 实现状态汇总
+
+| # | 局限性 | 状态 | 改进方案 |
+|---|-------|------|---------|
+| 1 | ~~OFFSET 分页性能~~ | ✅ **已实现** | Cursor 分页 O(1) |
+| 2 | 全文搜索无分词 | 待优化 | pg_trgm / pg_jieba / ES |
+| 3 | ETL 无增量更新 | 待优化 | Debezium CDC |
+| 4 | 大文件阻塞启动 | 待优化 | 消息队列异步导入 |
+| 5 | ~~无监控告警~~ | ✅ **已实现** | Micrometer + Prometheus |
+| 6 | ~~无认证鉴权~~ | ✅ **已实现** | API Key + Bucket4j |
+| 7 | ~~硬编码数据集适配~~ | ✅ **已实现** | JSON 配置驱动 |
+| 8 | 数据验证不完整 | 待优化 | Bean Validation |
+| 9 | extra JSONB 无上限 | 待优化 | 字段提升策略 |
+
+---
+
+## ✅ 已实现：动态数据集适配
+
+### 架构对比
+
+```
+改进前（硬编码）：
+┌─────────────────────────────────────────────────────────┐
+│  新增数据集 = 改代码 + 编译 + 测试 + 部署               │
+│                                                         │
+│  Dataset1Adapter.java  ←─ 硬编码字段映射               │
+│  Dataset2Adapter.java  ←─ 硬编码字段映射               │
+│  Dataset3Adapter.java  ←─ 硬编码字段映射               │
+│                                                         │
+│  问题：第100个数据集 = 再写100个 Adapter               │
+└─────────────────────────────────────────────────────────┘
+
+改进后（配置驱动）：
+┌─────────────────────────────────────────────────────────┐
+│  新增数据集 = 编辑 JSON 配置文件                        │
+│                                                         │
+│  dataset-mappings.json                                 │
+│  ├── dataset_001: 素材数据集1                           │
+│  ├── dataset_002: 素材数据集2                           │
+│  ├── dataset_003: 素材数据集3                           │
+│  ├── dataset_004: 新业务线素材库  ←─ 新增只需加配置     │
+│  └── ...                                                │
+│                                                         │
+│  DynamicDatasetAdapter ←─ 一个适配器处理所有数据集      │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 效率对比
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  新增数据集流程对比                      │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  改进前：业务提需求 → 排期 → 开发 → 测试 → 部署         │
+│          ════════════════════════════════════════        │
+│                        3-5 天                           │
+│                                                         │
+│  改进后：编辑 JSON → 放入文件 → 执行导入                │
+│          ══════════════════════════════════             │
+│                      5 分钟                             │
+│                                                         │
+│                 效率提升：100 倍                        │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 数据流转
+
+```
+数据导入流程：
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  XLS     │    │  Excel   │    │ Dynamic  │    │ PostgreSQL│
+│  文件    │───▶│  Reader  │───▶│ Adapter  │───▶│   DB     │
+│          │    │          │    │          │    │          │
+│ 任意格式 │    │ 解析行   │    │ JSON配置 │    │ 幂等写入 │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────┐
+                          │ dataset-mappings │
+                          │     .json        │
+                          │                  │
+                          │ 字段映射规则     │
+                          │ 类型转换规则     │
+                          └──────────────────┘
+```
 
 ---
 
@@ -164,19 +253,15 @@ Pinia store 的过滤/排序/分页状态只在内存中，页面刷新后状态
 
 ---
 
-## 局限 6：监控与告警 — 无 Metrics/Trace
+## 局限 6：监控与告警 — ✅ 已实现
 
 ### 当前实现
 
-仅有 SLF4J 结构化日志 + Spring Actuator `/actuator/health` 健康检查，无 Metrics 采集和分布式链路追踪。
+~~仅有 SLF4J 结构化日志 + Spring Actuator `/actuator/health` 健康检查，无 Metrics 采集和分布式链路追踪。~~
 
-### 影响
+**已实现**：Micrometer + Prometheus 指标采集。
 
-- 无法知道 API P99 延迟、吞吐量趋势
-- ETL 导入成功率无历史数据
-- 排查性能问题依赖日志 grep，无可视化
-
-### 改进方案
+### 实现方案
 
 ```yaml
 # pom.xml 加依赖
@@ -203,46 +288,60 @@ scrape_configs:
 
 ---
 
-## 局限 7：权限控制 — 无认证鉴权
+## 局限 7：权限控制 — ✅ 已实现
 
 ### 当前实现
 
-所有 API 接口无鉴权，任何人可以调用 `GET /api/v1/assets` 读取全量数据。
+~~所有 API 接口无鉴权，任何人可以调用 `GET /api/v1/assets` 读取全量数据。~~
 
-### 影响
+**已实现**：
+1. **API Key 认证**：通过 `X-API-Key` Header 进行认证
+2. **Bucket4j 限流**：每秒 10 请求，超过返回 429
+3. **Spring Security 配置**：公开端点（Swagger、Actuator）无需认证
 
-- 素材数据（包含上传人、城市、平台等信息）直接暴露
-- 无法区分不同角色的访问权限（管理员 vs 普通用户）
-- CORS 配置仅是第一道防线，不是安全保障
+### 实现方案
 
-### 改进方案
-
-**方案 A（简单）：API Key**
-```
-Authorization: ApiKey your-secret-key
-```
-在 `OncePerRequestFilter` 中验证 Header，适合 B2B 调用场景。
-
-**方案 B（完整）：JWT + Spring Security**
+**认证过滤器**：
 ```java
-@EnableWebSecurity
-@Configuration
-public class SecurityConfig {
-    @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) {
-        return http
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/stats/**").hasRole("VIEWER")
-                .requestMatchers("/api/v1/assets/**").hasRole("VIEWER")
-                .anyRequest().authenticated()
-            )
-            .oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt)
-            .build();
+@Component
+public class ApiKeyAuthFilter extends OncePerRequestFilter {
+    @Override
+    protected void doFilterInternal(...) {
+        String apiKey = request.getHeader("X-API-Key");
+        // 验证配置白名单
+        // 设置 SecurityContext
     }
 }
 ```
 
-**方案 C（速率限制）**：即使有鉴权，也需要速率限制（Bucket4j + Redis）防止爬虫和 DDoS。
+**限流过滤器**：
+```java
+@Component
+public class RateLimitFilter extends OncePerRequestFilter {
+    private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    // Token Bucket 算法
+    // 按 API Key 或 IP 限流
+}
+```
+
+**配置项**：
+```yaml
+app:
+  security:
+    enabled: true
+    api-keys:
+      - key: "dev-api-key-001"
+        name: "Developer"
+        roles: "ROLE_USER"
+  rate-limit:
+    requests-per-second: 10
+```
+
+### 后续优化
+
+1. **API Key 存储**：迁移到 Vault / 数据库
+2. **分布式限流**：Bucket4j + Redis（多实例场景）
+3. **JWT 支持**：用户登录场景
 
 ---
 

@@ -20,6 +20,11 @@
         </el-text>
       </div>
       <div class="toolbar-right">
+        <!-- 上传按钮 -->
+        <el-button type="primary" size="small" @click="uploadDialogVisible = true">
+          <el-icon><Upload /></el-icon>
+          上传
+        </el-button>
         <!-- 独立排序控件（从 AssetList 抽取的 SortControl 组件） -->
         <SortControl
           v-model="sortState"
@@ -206,7 +211,7 @@
         </el-table-column>
 
         <!-- 操作列 -->
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button
               type="primary"
@@ -215,6 +220,14 @@
               @click.stop="handleViewDetail(row.id)"
             >
               详情
+            </el-button>
+            <el-button
+              type="danger"
+              link
+              size="small"
+              @click.stop="handleDelete(row.id)"
+            >
+              删除
             </el-button>
           </template>
         </el-table-column>
@@ -239,12 +252,52 @@
         />
       </div>
     </el-card>
+
+    <!-- 上传对话框 -->
+    <el-dialog
+      v-model="uploadDialogVisible"
+      title="上传素材"
+      width="450px"
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="60px">
+        <el-form-item label="文件">
+          <el-upload
+            ref="uploadRef"
+            :auto-upload="false"
+            :limit="1"
+            accept=".xls,.xlsx"
+            :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
+            drag
+          >
+            <el-icon size="48" color="#c0c4cc"><UploadFilled /></el-icon>
+            <div class="el-upload__text">拖拽文件到此处，或 <em>点击选择</em></div>
+            <template #tip>
+              <div class="el-upload__tip">支持 .xls / .xlsx 格式，系统将自动识别数据集格式</div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="uploadDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="store.uploadLoading"
+          :disabled="!uploadFile"
+          @click="handleUpload"
+        >
+          确认上传
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import FilterBar from '@/components/FilterBar.vue'
 import FieldSelector from '@/components/FieldSelector.vue'
 import SortControl from '@/components/SortControl.vue'
@@ -252,6 +305,8 @@ import { useAssetStore } from '@/stores/assetStore'
 import type { FilterState, AssetStatus, SortState } from '@/types/asset'
 import { STATUS_LABELS, STATUS_TAG_TYPES } from '@/types/asset'
 import { formatFileSize, formatDateTime, formatDuration } from '@/utils/formatters'
+import { Upload, UploadFilled } from '@element-plus/icons-vue'
+import { ApiError } from '@/services/assetService'
 
 const router = useRouter()
 const route = useRoute()
@@ -419,6 +474,50 @@ function handleRefresh() {
   store.fetchAssets()
 }
 
+// ------------------- 上传功能 -------------------
+
+const uploadDialogVisible = ref(false)
+const uploadFile = ref<File | null>(null)
+
+function handleFileChange(file: { raw: File }) {
+  uploadFile.value = file.raw
+}
+
+function handleFileRemove() {
+  uploadFile.value = null
+}
+
+async function handleUpload() {
+  if (!uploadFile.value) return
+  try {
+    await store.uploadExcel(uploadFile.value)
+    uploadDialogVisible.value = false
+    uploadFile.value = null
+  } catch (error) {
+    if (error instanceof ApiError && error.message.includes('Unable to detect dataset format')) {
+      ElMessage.warning({
+        message: '无法识别文件格式，请联系系统管理员进行数据映射处理',
+        duration: 5000,
+      })
+    }
+  }
+}
+
+// ------------------- 删除功能 -------------------
+
+async function handleDelete(id: string) {
+  try {
+    await ElMessageBox.confirm('确定要删除该素材吗？此操作不可恢复。', '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await store.deleteAsset(id)
+  } catch {
+    // 用户取消或错误已在 store 中处理
+  }
+}
+
 // ------------------- 初始化（从 URL 恢复状态） -------------------
 
 onMounted(() => {
@@ -497,5 +596,9 @@ watch(
 
 :deep(.el-table__row:hover td) {
   background-color: #f0f7ff !important;
+}
+
+:deep(.el-upload-dragger) {
+  width: 100%;
 }
 </style>

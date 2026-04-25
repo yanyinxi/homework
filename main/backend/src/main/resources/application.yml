@@ -3,9 +3,9 @@ spring:
     name: asset-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/asset_db
-    username: asset
-    password: asset123
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:asset_db}
+    username: ${DB_USERNAME:asset}
+    password: ${DB_PASSWORD:asset123}
     driver-class-name: org.postgresql.Driver
     hikari:
       pool-name: AssetHikariPool
@@ -42,10 +42,31 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       show-details: always
+    info:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    build:
+      enabled: true
+    java:
+      enabled: true
+    os:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+info:
+  app:
+    name: 视频素材查询服务
+    description: 异构数据源的统一存储与查询系统
+    version: 1.0.0
+    author: Java 架构师
 
 springdoc:
   api-docs:
@@ -62,9 +83,25 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
+# ── 应用自定义配置 ─────────────────────────────────────────────────────────────
+# API Keys：当前为开发环境配置，生产环境请更换为安全的密钥
+# - dev-api-key-001: 普通用户权限，可用于查询和上传
+# - admin-api-key-001: 管理员权限，可用于删除操作
+# 注意：生产环境建议通过环境变量或密钥管理服务注入
 app:
   cors:
-    allowed-origins: http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173
+    allowed-origins: ${CORS_ORIGINS:http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173}
+  security:
+    enabled: true
+    api-keys:
+      - key: "dev-api-key-001"
+        name: "Developer"
+        roles: "ROLE_USER"
+      - key: "admin-api-key-001"
+        name: "Admin"
+        roles: "ROLE_ADMIN,ROLE_USER"
+  rate-limit:
+    requests-per-second: 10
 
 ---
 # Docker 环境配置覆盖
@@ -82,3 +119,19 @@ logging:
 app:
   cors:
     allowed-origins: http://localhost,http://127.0.0.1
+
+---
+# 生产环境：结构化 JSON 日志
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    com.homework.asset: INFO
+    org.springframework: WARN
+    org.springframework.security: INFO
+  structured:
+    format:
+      console: ecs

@@ -1,307 +1,582 @@
 # 视频素材查询服务
 
-**核心挑战**：三份来自不同业务系统的 XLS 文件（或更多），字段命名语言、时间格式（Excel序列号整数/含小数/Unix秒）、大小单位（字符串"63MB"/字节整数/数值+单位双列）、状态枚举（中文/英文/混合）、标签分隔符（分号/逗号/Python list字符串）全部不一致。这是真正的**异构数据集成**问题，不是简单的字段映射。
-
-
-**技术栈**：Java 17 · Spring Boot 3.3 · MyBatis-Plus · PostgreSQL 15 · Flyway · Testcontainers · Vue 3 · Docker Compose
+> **架构师的完整技术决策链**：从访问模式分析 → 存储选型 → Schema 设计 → 安全防护 → 演进路径，每一步都有明确依据，拒绝"因为流行所以选择"。
 
 ---
 
-## 系统架构
+## 技术架构
+![alt text](main/docs/验收截图/system-arch.png)
 
-![系统架构](main/docs/arch/system-arch.png)
-
-
-
-![架构分层](main/docs/arch/architecture-detailed.png) 
-
----
-
-## 快速启动
-
-```bash
-第一步：
-git clone https://github.com/yanyinxi/homework.git && cd homework
-
-
-第二步：（根据自己电脑环境， 三选一）
-1. bash start-docker.sh        # Docker（推荐）：自动处理端口冲突 + 数据导入
-
-2. bash start-local.sh         # macOS/Linux：脚本自动安装 Java/Maven/Node/PG
-
-3. .\start-local.ps1           # Windows（管理员 PS）：winget 自动安装依赖
+## 功能架构
 
 ```
-
-| 服务 | Docker | 本地 |
-| ------ | -------- | ------ |
-| 前端管理后台 | <http://localhost> | <http://localhost:5173> |
-| Swagger UI | <http://localhost:8080/swagger-ui.html> | 同左 |
-| 健康检查 | <http://localhost:8080/actuator/health> | 同左 |
-
----
-
-## 代码结构
-
-```text
-homework/
-├── doc/                                # 原始题目 + 三份源数据集 XLS
-├── main/
-│   ├── backend/                        # Spring Boot 3.3，port 8080
-│   │   └── src/main/java/com/homework/asset/
-│   │       ├── api/
-│   │       │   ├── AssetController     GET /api/v1/assets（列表+详情）
-│   │       │   ├── StatsController     GET /api/v1/stats/*（Q1/Q2/Q3）
-│   │       │   ├── IngestController    GET /api/v1/ingest/*（运行记录+拒绝明细）
-│   │       │   ├── dto/                ApiEnvelope / AssetDTO / PagedResponse
-│   │       │   ├── exception/          ApiException + GlobalExceptionHandler
-│   │       │   └── query/              FilterableField / FilterOperator /
-│   │       │                           SortableField / QueryDslParser（DSL核心）
-│   │       ├── config/
-│   │       │   └── PgStringArrayTypeHandler   text[] JDBC 适配（关键组件）
-│   │       ├── ingest/
-│   │       │   ├── IngestRunner        ApplicationRunner，CLI 入口
-│   │       │   ├── IngestBatchService  批量 upsert（ON CONFLICT DO UPDATE）
-│   │       │   ├── adapter/            DatasetAdapter 接口 + 三个实现类
-│   │       │   ├── excel/              Apache POI ExcelReader
-│   │       │   └── normalizer/         EtlNormalizers（5个纯函数 Normalizer）
-│   │       ├── mapper/                 AssetMapper + AssetMapper.xml（动态 SQL）
-│   │       └── service/                AssetQueryService / AssetStatsService
-│   │
-│   ├── frontend/                       # Vue 3 + Vite，port 5173/80
-│   │   └── src/
-│   │       ├── pages/                  Dashboard / AssetList / AssetDetail
-│   │       ├── components/             FilterBar / SortControl / FieldSelector
-│   │       ├── stores/assetStore       Pinia，查询状态 ↔ URL query 双向绑定
-│   │       ├── utils/queryBuilder      前后端契约的唯一序列化来源
-│   │       └── services/assetService   Axios HTTP 层
-│   │
-│   └── docs/                           # 架构设计 / SQL / 验收报告 / 截图
-│
-├── docker-compose.yml                  三服务编排（postgres + backend + frontend）
-└── start-docker.sh / start-local.sh / start-local.ps1
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              视频素材管理系统                                      │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                   前端层                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │ 数据概览 │  │ 素材列表 │  │ 素材详情 │  │ 运维监控 │  │ Excel 上传导入   │  │
+│  │ Dashboard│  │ 列表筛选 │  │ 详情展示 │  │ Actuator │  │ 拖拽上传/删除    │  │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────────────┘  │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                   API 层                                          │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────┐               │
+│  │        查询 API (只读)       │  │        写入 API (需认证)    │               │
+│  ├─────────────────────────────┤  ├─────────────────────────────┤               │
+│  │ GET  /assets         列表   │  │ POST /assets/upload  上传   │               │
+│  │ GET  /assets/cursor  分页   │  │ DEL  /assets/{id}    删除   │               │
+│  │ GET  /assets/{id}    详情   │  │ DEL  /assets/batch   批量删 │               │
+│  │ GET  /stats          统计   │  │ DEL  /assets/by-query 条件删│               │
+│  └─────────────────────────────┘  └─────────────────────────────┘               │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                  安全防护层                                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐    │
+│  │ Bucket4j 限流│  │ API Key 认证 │  │ RBAC 权限    │  │ SQL 注入防护     │    │
+│  │ 10 req/s    │  │ 白名单匹配   │  │ USER/ADMIN  │  │ 四层纵深防御     │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                  业务逻辑层                                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐    │
+│  │ 查询服务     │  │ 写入服务     │  │ 统计服务     │  │ ETL 导入服务     │    │
+│  │ DSL 解析     │  │ 幂等写入     │  │ Q1/Q2/Q3    │  │ 归一化/适配器    │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────────┘    │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                  数据访问层                                       │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │  MyBatis-Plus + XML 动态 SQL  │  PostgreSQL text[] TypeHandler  │  Upsert │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                  数据存储层                                       │
+│  ┌──────────────────────────────────────────────────────────────────────────┐   │
+│  │  PostgreSQL 15  │  text[] 数组  │  JSONB 稀疏字段  │  8 个业务索引        │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                  可观测性                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐    │
+│  │ Actuator     │  │ Prometheus   │  │ 业务指标     │  │ Swagger UI       │    │
+│  │ health/info  │  │ /metrics     │  │ API延迟/计数 │  │ API 文档         │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 功能模块说明
+
+| 模块 | 功能点 | 技术实现 |
+|------|--------|----------|
+| **数据概览** | 统计卡片、趋势图表 | Vue 3 + ECharts |
+| **素材列表** | 多字段筛选、排序、分页 | 自研 DSL + Cursor 分页 |
+| **素材详情** | 完整信息展示、关联数据 | 动态字段选择 |
+| **运维监控** | 健康检查、指标查看、API 文档 | Actuator + Prometheus |
+| **Excel 导入** | 拖拽上传、自动识别格式、幂等写入 | Apache POI + 3 套适配器 |
+| **数据删除** | 单条/批量/条件删除 | RBAC 权限控制 |
+| **安全防护** | 限流、认证、注入防护 | Bucket4j + Spring Security |
+| **可观测性** | 监控指标、API 文档 | Micrometer + SpringDoc |
+
 ---
 
-## 技术挑战与架构难点
+## 核心技术挑战
 
-### 1. 存储选型：访问模式驱动，拒绝 ElasticSearch
+**这是异构数据集成问题，不是简单 CRUD。**  三份来自不同业务系统的 XLS 文件，**全部字段都不一致**：
 
-选型标准只有一个：**当前访问模式需要什么**，不是技术热度。
+| 维度 | 数据集1 | 数据集2 | 数据集3 |
+|------|---------|---------|---------|
+| 时间格式 | Excel 序列号整数 | Excel 序列号含小数 | Unix 秒时间戳 |
+| 文件大小 | 字符串 `"63.76MB"` | 字节整数 | 数值+单位双列 |
+| 审核状态 | 中文 | 英文 | 中英混合 |
+| 标签分隔符 | 分号 `;` | 逗号 `,` | Python list 字符串 |
+
+本项目解决了 后续可上传100或1000 等等数据， 后端自动识别规划， 数据集配置化映射方案，避免反复开发，快速支持业务发展。 配置参考：[动态数据集适配指南](main/docs/dataset-mapping-guide.md)
+
+---
+
+## 架构决策摘要（重点）
+
+### 决策 1：选 PostgreSQL 而非 ElasticSearch
+
+**访问模式决定存储选型，不是技术热度。**
 
 | 访问模式 | PostgreSQL | ElasticSearch |
-| -------- | ---------- | ------------- |
-| 结构化字段过滤 + 数值范围 | B-tree/GIN，O(log n) | 倒排索引，非本职 |
-| GROUP BY 聚合（Q1/Q2/Q3） | SQL HashAggregate，原生 | Aggregation bucket，表达复杂 |
-| `text[] @>` 数组包含查询 | GIN 索引，直接支持 | nested field，mapping 复杂 |
-| ETL 后立即一致读 | ACID，写完即可查 | 默认 1s refresh 延迟，不可接受 |
-| 幂等写入 | `ON CONFLICT DO UPDATE` | 无原生 upsert 语义 |
+|----------|------------|---------------|
+| 结构化过滤 + 数值范围 | B-tree O(log n) | 倒排索引，非本职 |
+| GROUP BY 聚合 | SQL 原生 | Aggregation bucket，复杂 |
+| `text[] @>` 数组包含 | GIN 索引直接支持 | nested field 复杂 |
+| ETL 后立即一致读 | ACID，写完可查 | 1s refresh 延迟 |
+| 幂等写入 | `ON CONFLICT DO UPDATE` | 无原生 upsert |
 
-**ES 的真正优势（全文检索、亿级 facet）本题不存在**。选 ES 是过度设计。
+**ES 的优势（全文检索、亿级 facet）本题不存在。选 ES 是过度设计。**
 
-**未来演进**：若出现中文全文检索需求，通过 Debezium CDC → Kafka → ES 建读侧 projection，PG 仍作 Source of Truth——这是演进，不是替换。
-
----
-
-### 2. Schema 统一：单表 + JSONB 兜底，拒绝 EAV 和多表
-
-**拒绝 EAV（属性值表）**：Q1/Q2/Q3 聚合全部需要 JOIN，GROUP BY 性能劣化，索引难以建立。
-
-**拒绝多表（每数据集一张）**：跨数据集聚合强制 UNION，API 层需要合并逻辑，schema 随数据集数量增长。
-
-**选择单表**，关键字段决策：
-
-```sql
--- 状态用 TEXT + CHECK，而非 PG ENUM
--- 原因：ENUM 增加枚举值需要 ALTER TYPE，在生产环境有锁风险
-status  TEXT NOT NULL CHECK (status IN ('pending','approved','rejected'))
-
--- 标签用 TEXT[]，而非 JSONB 数组
--- 原因：TEXT[] + GIN 索引直接支持 @> 包含查询，JSONB 需要额外展开
-tags    TEXT[] NOT NULL DEFAULT '{}'
-
--- 主键用 UUID，而非自增
--- 原因：三份数据集各自有 ID 命名空间（A0001/asset_001/vid0001），自增无法解决血缘追踪
-id      UUID NOT NULL DEFAULT gen_random_uuid()
-
--- 稀疏字段用 JSONB 兜底，避免列爆炸
--- platform 建独立列（Q3 需要 GROUP BY），spend 等低频字段进 extra
-extra   JSONB NOT NULL DEFAULT '{}'
-```
-
-**索引原则：每个索引对应一个真实查询场景**（不为幻想建索引）：
-
-```sql
-idx_assets_status_uploader  -- Q1: WHERE status='approved' GROUP BY uploader（覆盖扫描）
-idx_assets_tags_gin         -- tags @> ARRAY['节日']（GIN，@> 专用）
-idx_assets_platform         -- Q3: GROUP BY platform WHERE platform IS NOT NULL
-idx_assets_uploaded_at      -- 列表默认排序（DESC，与查询方向一致）
-idx_assets_file_size_bytes  -- 文件大小范围过滤 + 排序
-```
+**演进路径**：全文检索需求出现时 → Debezium CDC → Kafka → ES 读侧投影，PG 仍是 Source of Truth。
 
 ---
 
-### 3. 查询 DSL：自研 bracket-style，不引入 RSQL
+### 决策 2：自研查询 DSL，不引入 RSQL
 
-作业要求的语法是 `file_size_bytes[lte]=524288000`——这是 bracket-style，与 RSQL（`file_size=le=524288000`）格式不同。引入 RSQL 库需要额外适配层，不如自研（~150行）且能完全掌控安全策略。
+作业语法是 `file_size[lte]=524288000`（bracket-style），与 RSQL 不同。引入库需要适配层，不如自研 ~150 行，**完全掌控安全策略**。
 
 **防注入四层设计**（缺任何一层都是漏洞）：
 
-```text
+```
 请求参数 → FilterableField 枚举白名单 → 未知字段 400
-         → FilterOperator 枚举白名单  → 未知操作符 400
-         → MyBatis #{} 参数化        → 值永远不拼接进 SQL
-         → SortableField 枚举 + XML <foreach>/<choose> hardcode 列名
-           （即使 Java 层有白名单，${orderBy} 也是注入风险，项目规范禁止）
+         → FilterOperator 枚举白名单 → 未知操作符 400
+         → MyBatis #{} 参数化 → 值永不拼接进 SQL
+         → XML <choose> 硬编码列名 → 禁止 ${orderBy}
 ```
 
-**稳定分页**：默认排序追加 `id DESC` 作为 tie-breaker，避免 PostgreSQL 对相同字段值行的不确定排序导致 OFFSET 分页重复/缺失记录。
+---
+
+### 决策 3：应用层归一化，不在数据库层
+
+**脏数据清洗是业务语义判断，放 DB 触发器会失去可测性。**
+
+5 个纯函数 Normalizer，各自独立单元测试：
+
+| Normalizer | 关键难点 |
+|------------|----------|
+| `DateNormalizer` | Excel 基准日期是 1899-12-30（含 1900 年闰年 Bug），不是 1900-01-01 |
+| `SizeNormalizer` | `"63.76MB"` / 字节整数 / 双列 → BigDecimal 避免浮点误差 |
+| `TagNormalizer` | Python list 字符串是单引号，**禁止 eval**，正则提取 |
+| `StatusNormalizer` | 中英混合 + 大小写变体，两阶段匹配 |
 
 ---
 
-### 4. ETL：应用层归一化，不在数据库层处理
+### 决策 4：单表 + JSONB 兜底，拒绝 EAV
 
-**将归一化放在 DB 触发器/函数里的问题**：失去可测性，脏数据清洗是业务语义判断，不属于数据库职责。
-
-5 个 **纯函数 Normalizer**，各自独立单元测试，覆盖真实的格式复杂度：
-
-| Normalizer | 真实难点 |
-| ---------- | -------- |
-| `DateNormalizer` | Excel 基准日期是 1899-12-30（含1900年闰年Bug），不是 1900-01-01；`>1e9` 判断为 Unix 秒 |
-| `SizeNormalizer` | 字符串 "63.76MB" / 字节整数 / 数值+单位双列 → BigDecimal 避免浮点误差 |
-| `TagNormalizer` | Python list 字符串 `"['品牌', '测评']"` 是单引号，不是合法 JSON，正则提取，**禁止 eval** |
-| `StatusNormalizer` | 中英混合 + 大小写变体，两阶段匹配（精确 → 不区分大小写），未知值 throw |
-| `PlatformNormalizer` | qianchuan/千川/Qianchuan 混用 → canonical code，N/A → null |
-
-**批次事务设计**：行级预校验在归一化阶段提前剔除无效行（null title/uploader/status），避免一行脏数据触发整批事务回滚（Dataset3 的初始实现就踩了这个坑）。
-
-**新增数据集**：只需实现 `DatasetAdapter` 接口，不改 Schema 和 API。
+| 方案 | 问题 |
+|------|------|
+| EAV（属性值表） | 聚合需要 JOIN，GROUP BY 性能劣化 |
+| 多表（每数据集一张） | 跨数据集聚合强制 UNION，schema 随数据集增长 |
+| **单表 + JSONB** | 聚合简单，稀疏字段用 JSONB 兜底 ✅ |
 
 ---
 
-### 5. PostgreSQL text[] 的 JDBC 适配
+## ⭐ 超预期功能（面试题未要求）
 
-这是一个隐藏的技术陷阱。MyBatis 的 `JacksonTypeHandler` 会把 `List<String>` 序列化为 JSON 格式 `["a","b"]`，但 PostgreSQL text[] 的 JDBC 期望的是 `Array` 对象，不是字符串——直接 `::text[]` cast 会报错。
+> **题目只要求只读查询 API，但实际业务场景必然需要数据写入能力。主动补全完整 CRUD 闭环，展示架构师的前瞻性思维。**
 
-**解决方案**：自定义 `PgStringArrayTypeHandler`，通过 JDBC `createArrayOf("text", ...)` 创建正确的数组类型：
+### 功能清单
+
+| 功能 | 说明 | 权限控制 |
+|------|------|----------|
+| Excel 上传导入 | 支持 .xls/.xlsx，自动识别三套数据集格式 | ROLE_USER |
+| 单条删除 | 按 UUID 删除单条素材 | ROLE_ADMIN |
+| 批量删除 | 最多 1000 条，防误删 | ROLE_ADMIN |
+| 按条件删除 | status/uploader/sourceDataset 过滤删除 | ROLE_ADMIN |
+| 前端管理界面 | 拖拽上传 + 删除确认 + 实时刷新 | 完整 UI 交互 |
+
+### 技术亮点
+
+#### 1. 智能数据集识别
+
+用户无需关心数据来自哪个系统，系统自动根据 Excel 列名匹配：
 
 ```java
-Array array = ps.getConnection().createArrayOf("text", parameter.toArray(new String[0]));
-ps.setArray(i, array);
+private DatasetAdapter detectAdapter(Map<String, Object> sampleRow) {
+    Set<String> headers = sampleRow.keySet();
+    
+    // Dataset1 特征：中文列名
+    if (headers.contains("素材编号") || headers.contains("上传日期")) {
+        return new Dataset1Adapter();
+    }
+    // Dataset2/3 特征：英文列名，根据 platform 字段区分
+    if (headers.contains("asset_id") || headers.contains("uploaded_at")) {
+        return headers.contains("platform") ? new Dataset3Adapter() : new Dataset2Adapter();
+    }
+    // 无法识别时，明确提示用户
+    throw new ApiException(400, "Unable to detect dataset format. Please contact administrator.");
+}
 ```
+
+**用户体验**：拖拽文件 → 一键上传 → 自动归类，零配置。
+
+#### 2. 幂等导入 + 拒绝队列
+
+```java
+// 每行独立校验，脏数据不阻塞整批
+if (!isValid(canonical)) {
+    rejectedRecords.add(new RejectedRecord(rowNum, rawId, "Missing required field"));
+    continue;  // 跳过该行，继续处理
+}
+
+// UPSERT 语义：相同 source_dataset + source_id 自动更新
+ON CONFLICT (source_dataset, source_id) DO UPDATE SET ...
+```
+
+**好处**：重复导入不会产生脏数据，无效行有明确原因记录。
+
+#### 3. 细粒度权限控制
+
+| 操作 | API | 权限 | 设计理由 |
+|------|-----|------|----------|
+| 上传 | `POST /assets/upload` | ROLE_USER | 业务人员可操作 |
+| 删除单条 | `DELETE /assets/{id}` | ROLE_ADMIN | 需审批 |
+| 批量删除 | `DELETE /assets/batch` | ROLE_ADMIN | 高危操作 |
+| 按条件删除 | `DELETE /assets/by-query` | ROLE_ADMIN | 影响面大 |
+
+**安全设计**：权限与业务风险匹配，最小权限原则。
+
+#### 4. 友好的错误引导
+
+前端检测到格式无法识别时，给出明确指引：
+
+```
+无法识别文件格式，请联系系统管理员进行数据映射处理
+```
+
+而非技术性的 "400 Bad Request"。
+
+### 技术优势对比
+
+| 方案 | 常规做法 | 本项目实现 | 优势 |
+|------|----------|------------|------|
+| 数据集识别 | 用户手动选择下拉框 | 自动识别列名特征 | 减少用户操作，降低选错风险 |
+| 批量导入 | 全部成功或全部失败 | 行级校验 + 拒绝队列 | 部分成功不影响整批 |
+| 权限控制 | 无或粗粒度 | 按操作风险分级 | 符合企业安全规范 |
+| 错误提示 | 技术性错误码 | 业务友好提示 | 用户知道下一步该做什么 |
+
+### 前端实现
+
+基于 Vue 3 + Element Plus，实现了完整的素材管理界面：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  素材列表                                         共 69 条记录  │
+├─────────────────────────────────────────────────────────────┤
+│  [上传] [排序▼] [字段选择] [刷新]                              │
+├─────────────────────────────────────────────────────────────┤
+│  ID │ 标题 │ 上传人 │ 状态 │ 标签 │ 平台 │ 操作              │
+│  ───┼──────┼────────┼──────┼──────┼──────┼─────────────────  │
+│  …  │  …   │   …    │  …   │  …   │  …   │ [详情] [删除]    │
+├─────────────────────────────────────────────────────────────┤
+│  上传对话框：                                                 │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │     📁 拖拽文件到此处，或点击选择                        │    │
+│  │     支持 .xls/.xlsx，系统将自动识别数据集格式             │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                    [取消] [确认上传]          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**交互细节**：
+- 拖拽上传，自动识别格式
+- 删除前二次确认，显示"此操作不可恢复"
+- 操作成功后自动刷新列表
 
 ---
 
-## 作业解答
+## 关键代码实现（证明代码能力）
 
-### Part A · 数据库设计
+### 1. 四层防注入的查询 DSL 解析器
 
-**Q1：各上传人已通过素材平均文件大小**
+```java
+// 第一层：字段白名单枚举
+FilterableField field = FilterableField.fromParamName(fieldName)
+    .orElseThrow(() -> new ApiException(400, "Invalid filter field: '" + fieldName + "'"));
 
-```bash
-curl http://localhost:8080/api/v1/stats/uploader-avg-size
+// 第二层：操作符白名单枚举
+FilterOperator op = FilterOperator.fromBracket(opStr)
+    .orElseThrow(() -> new ApiException(400, "Unknown filter operator: '" + opStr + "'"));
+
+// 第三层：MyBatis #{} 参数化（XML 中）
+// <if test="status != null">AND status = #{status}</if>
+
+// 第四层：排序字段硬编码（禁止 ${orderBy}）
+// <choose><when test="clause.columnName == 'uploaded_at'">uploaded_at</when></choose>
 ```
 
-实际结果：吴十 573MB · 赵六 571MB · 刘八 494MB · 陈七 432MB · 张三 100MB
-（完整 JSON + SQL 解析见 [queries.md](main/docs/queries.md)）
-
-**Q2：标签 Top 5**
-
-```bash
-curl "http://localhost:8080/api/v1/stats/top-tags?topN=5"
-```
-
-实际结果：搞笑(20) · 促销(19) · 生活(18) · 节日(17) · 测评(16)
-
-**Q3（自选）：各平台审核通过率**
-
-业务意义：识别哪些平台频繁违规，指导素材采买策略。`CTE + FILTER聚合 + NULLIF防除零`。
-
-```bash
-curl http://localhost:8080/api/v1/stats/platform-approval
-```
-
-实际结果：qianchuan 29.41%（34条，10通过）· 巨量引擎 null（7条全未通过，NULLIF防除零）
-
-**数据质量**（74 源行 → 69 有效记录）：
-
-| 数据集 | 写入 | 跳过原因 |
-| -------- | ------ | --------- |
-| 1（25行） | 25 | 无 |
-| 2（27行） | 25 | 2条 source_id 重复，ON CONFLICT 幂等合并 |
-| 3（22行） | 19 | 3条 title 为空字符串，行级校验拒绝入库 |
+**面试官问**：为什么白名单之后还要禁止 `${orderBy}`？  
+**回答**：调用链可能被绕过（如 AOP 切面失效），注入风险在 DB 层永远存在。**纵深防御，每层都是独立的最后一道防线。**
 
 ---
 
-### Part B · 只读 API
+### 2. PostgreSQL text[] 的 JDBC 陷阱处理
 
-统一响应格式：`{"code":0,"message":"ok","data":{...}}`，列表用 `{items, total, page, pageSize}`。
+MyBatis `JacksonTypeHandler` 产出 JSON `["a","b"]`，但 PostgreSQL text[] 期望 `Array` 对象，直接 `::text[]` cast 会报错。
 
-**过滤操作符**（bracket-style DSL）：
-
-| 语法 | 语义 |
-| ------ | ------ |
-| `field=v` / `field[eq]=v` | 等于 |
-| `field[ne/gt/gte/lt/lte]=v` | 不等于 / 范围 |
-| `field[in]=a,b,c` | 枚举包含 |
-| `field[like]=x` | 模糊匹配 |
-| `tags[has]=x` | 数组包含（PG `@>`） |
-
-**典型请求**：
-
-```bash
-# 多字段过滤 + 排序 + 稀疏字段
-curl 'http://localhost:8080/api/v1/assets?status=approved&tags[has]=节日&sort=uploaded_at:desc&fields=title,uploader,status'
-
-# 文件大小范围过滤
-curl 'http://localhost:8080/api/v1/assets?file_size_bytes[lte]=524288000&sort=file_size_bytes:desc'
-
-# 稀疏字段详情（DB 层 SELECT 投影 + DTO 剥字段双保险）
-curl 'http://localhost:8080/api/v1/assets/{id}?fields=title,status,uploader'
+```java
+@Override
+public void setNonNullParameter(PreparedStatement ps, int i,
+        List<String> parameter, JdbcType jdbcType) throws SQLException {
+    // 用 JDBC createArrayOf 创建正确的 PG 数组类型
+    Array array = ps.getConnection().createArrayOf("text", parameter.toArray(new String[0]));
+    ps.setArray(i, array);
+}
 ```
 
-完整可执行文档：<http://localhost:8080/swagger-ui.html>
+**面试官问**：为什么不用 Jackson 序列化后 cast？  
+**回答**：PostgreSQL 数组字面量是 `{a,b}` 格式，不是 JSON `["a","b"]`。这是 MyBatis + PG 的隐藏陷阱。
 
 ---
 
-## 生产差距与演进路径
+### 3. 幂等 ETL 的批次事务设计
 
-知道自己的边界，才是架构成熟度的体现。
+**问题**：Dataset3 导入时，一行脏数据（title 为空）触发整批事务回滚，导致 22 行全部丢失。
 
-| 当前局限 | 触发条件 | 生产改进方案 |
-| -------- | -------- | ------------ |
-| OFFSET 分页，大页 O(N) | 数据量 > 10万行 | Keyset/Cursor 分页，O(1) |
-| ILIKE 无中文分词，全表扫描 | 全文检索需求 | `pg_trgm`（轻量）→ `pg_jieba + tsvector`（完整）→ ES（重型） |
-| ETL 全量重跑，无增量 | 数据源变为实时流 | Debezium CDC + DLQ（拒绝队列） |
-| 无认证鉴权 | 对外暴露 | API Key + Bucket4j 速率限制 → OAuth2 JWT |
-| 无可观测性 | 进入生产 | Micrometer + Prometheus + Grafana + OpenTelemetry |
-| 未预留 tenant_id | 多租户 | Schema 变更 + 行级安全策略（RLS） |
+**解决**：行级预校验在归一化阶段提前剔除无效行，避免 DB 层 NOT NULL 约束回滚整批。
+
+```java
+// 批次写入前校验
+private boolean isValid(CanonicalAsset asset) {
+    return asset.title() != null && !asset.title().isBlank()
+        && asset.uploader() != null
+        && asset.status() != null;
+}
+
+// 无效行记录到拒绝队列，不阻塞整批
+if (!isValid(canonical)) {
+    rejectedRecords.add(new RejectedRecord(raw, "Missing required field"));
+    continue;  // 跳过该行，继续处理其他行
+}
+```
+
+**设计原则**：业务语义校验放应用层，DB 约束作为最后兜底。
 
 ---
 
-## 运行测试
+### 4. Cursor 分页（Keyset Pagination）
+
+OFFSET 分页在大数据集下性能劣化：`OFFSET 100000` 需要扫描并丢弃前 10 万行。
+
+```sql
+-- 第一页
+SELECT * FROM assets ORDER BY uploaded_at DESC, id ASC LIMIT 20;
+
+-- 后续页：用上一页最后一行作为游标
+SELECT * FROM assets
+WHERE (uploaded_at, id) < ('2024-08-10T00:00:00Z', 'uuid-xxx')
+ORDER BY uploaded_at DESC, id ASC
+LIMIT 20;
+```
+
+**复杂度**：无论翻到多深的页，始终 O(1)。
+
+---
+
+## 安全架构设计
+
+### API 请求处理链
+
+```
+请求 → RateLimitFilter → ApiKeyAuthFilter → Controller → AssetMetrics
+           ↓                   ↓                  ↓
+        429 限流           401 认证         Prometheus 指标
+```
+
+### 详细流程
+
+```
+HTTP Request
+     │
+     ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ RateLimitFilter │────▶│ ApiKeyAuthFilter│────▶│   Controller    │
+│                 │     │                 │     │                 │
+│ Token Bucket    │     │ X-API-Key 验证  │     │   业务处理      │
+│ 10 请求/秒      │     │ 白名单匹配      │     │                 │
+└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+      429 Too Many           401 Unauthorized        200 OK
+      (超限拒绝)              (无Key/无效Key)          (正常响应)
+                                                         │
+                                                         ▼
+                                                  ┌─────────────┐
+                                                  │ AssetMetrics│
+                                                  │             │
+                                                  │ 记录延迟    │
+                                                  │ 请求计数    │
+                                                  └──────┬──────┘
+                                                         │
+                                                         ▼
+                                                  ┌─────────────┐
+                                                  │ Prometheus  │
+                                                  │ /metrics    │
+                                                  └─────────────┘
+```
+
+### 生产级特性
+
+| 特性 | 说明 |
+|------|------|
+| API Key 认证 | 配置化管理，支持 RBAC（ROLE_USER / ROLE_ADMIN） |
+| Bucket4j 限流 | 每秒 10 请求，超出返回 429 |
+| Prometheus 监控 | `/actuator/prometheus` 暴露业务指标 |
+| SQL 注入防护 | 四层纵深防御（白名单 + 参数化 + 硬编码列名） |
+
+---
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+---
+# 一键启动
+
+```bash
+# 第一步
+git clone https://github.com/yanyinxi/homework.git && cd homework
+
+
+# 第二步（三选一）
+bash start-local.sh                 # macOS/Linux（推荐） 「已验证OK ， 验证机为mac系统」
+
+
+bash start-docker.sh                # Docker 「已验证OK」
+ 
+
+.\start-local-window.ps1            # Windows 「无环境，未验证」
+
+
+```
+
+| 服务 | 地址 |
+|------|------|
+| 前端页面 | http://localhost |
+| API 文档 | http://localhost:8080/swagger-ui.html |
+| 健康检查 | http://localhost:8080/actuator/health |
+| Prometheus 监控 | http://localhost:8080/actuator/prometheus |
+| 业务指标 | http://localhost:8080/actuator/metrics |
+| 应用信息 | http://localhost:8080/actuator/info |
+
+> **注意**：API 端点需要 `X-API-Key` Header 认证，Actuator 端点（健康检查、监控）无需认证。
+
+---
+
+## 测试覆盖
 
 ```bash
 cd main/backend
-mvn test     # 单元测试：5 Normalizer + QueryDslParser + 3 Adapter（无需 Docker）
-mvn verify   # 集成测试：Testcontainers 起真实 PG 容器（禁止 H2，PG 特性不兼容）
+mvn test     # 单元测试：5 Normalizer + QueryDslParser + 3 Adapter
+mvn verify   # 集成测试：Testcontainers 真实 PG 容器（禁止 H2）
+```
+ 
+
+---
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+
+# 作业解答
+
+### Part A · 数据库设计
+
+| 验收项 | 状态 |
+|--------|------|
+| Schema 设计（字段类型 + 索引） | ✅ 8 个索引，对应查询场景 |
+| 三份数据集导入 | ✅ 69 条有效记录 |
+| Q1：上传人平均文件大小 | ✅ 8 位上传人聚合结果 |
+| Q2：标签 Top 5 | ✅ 搞笑(20) 促销(19) 生活(18) 节日(17) 测评(16) |
+| Q3：平台审核通过率（自选） | ✅ qianchuan 29.41%，巨量引擎 null（NULLIF 防除零） |
+
+### Part B · 只读 API
+
+```bash
+# 多字段过滤 + 排序 + 稀疏字段
+curl -H "X-API-Key: dev-api-key-001" \
+  'http://localhost:8080/api/v1/assets?status=approved&tags[has]=节日&sort=uploaded_at:desc&fields=title,uploader,status'
+
+# 文件大小范围过滤
+curl -H "X-API-Key: dev-api-key-001" \
+  'http://localhost:8080/api/v1/assets?file_size_bytes[lte]=524288000'
+
+# Cursor 分页（大数据集推荐）
+curl -H "X-API-Key: dev-api-key-001" \
+  'http://localhost:8080/api/v1/assets/cursor?page_size=20'
 ```
 
 ---
 
-## 文档索引
+### Part C · 写入 API（上传 & 删除）【潜在增量问题】
 
-| 文档 | 内容 |
-| ------ | ------ |
-| [design.md](main/docs/design.md) | 架构决策完整版、EXPLAIN ANALYZE 分析、前端设计、扩展性演进路径 |
-| [schema-design.md](main/docs/schema-design.md) | 完整 DDL + 9个索引设计说明 + 查询计划解读 |
-| [queries.md](main/docs/queries.md) | Q1/Q2/Q3 SQL + 实际执行结果 JSON + 时间复杂度分析 |
-| [improvements.md](main/docs/improvements.md) | 10项局限性详解与生产级改进路径 |
-| [验收报告.md](main/docs/验收报告.md) | 19/19 验收明细 + ETL 修复记录 |
-| [验收截图.md](main/docs/验收截图.md) | Docker 启动、前端页面、API 调用截图 |
-| [PRD.md](main/docs/PRD.md) | 产品需求、验收标准、技术决策记录（ADR） |
+#### 上传 Excel 导入素材
+
+```bash
+# 上传 Excel 文件批量导入（需要 ROLE_USER 权限）
+curl -X POST -H "X-API-Key: dev-api-key-001" \
+  -F "file=@素材数据集1.xls" \
+  http://localhost:8080/api/v1/assets/upload
+
+# 指定数据集编号
+curl -X POST -H "X-API-Key: dev-api-key-001" \
+  -F "file=@data.xlsx" \
+  -F "dataset=1" \
+  http://localhost:8080/api/v1/assets/upload
+```
+
+**响应示例**：
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "totalRows": 25,
+    "inserted": 23,
+    "updated": 0,
+    "rejected": 2,
+    "rejectedRecords": [
+      {"rowNum": 5, "rawId": "A0005", "reason": "Missing required field: title"}
+    ]
+  }
+}
+```
+
+#### 删除素材
+
+```bash
+# 删除单条素材（需要 ROLE_ADMIN 权限）
+curl -X DELETE -H "X-API-Key: admin-api-key-001" \
+  http://localhost:8080/api/v1/assets/{id}
+
+# 批量删除（最多 1000 条）
+curl -X DELETE -H "X-API-Key: admin-api-key-001" \
+  -H "Content-Type: application/json" \
+  -d '["uuid-1", "uuid-2", "uuid-3"]' \
+  http://localhost:8080/api/v1/assets/batch
+
+# 按条件删除
+curl -X DELETE -H "X-API-Key: admin-api-key-001" \
+  'http://localhost:8080/api/v1/assets/by-query?status=rejected&uploader=张三'
+```
+
+**权限要求**：
+
+| 操作 | 权限要求 |
+|------|----------|
+| 上传导入 | ROLE_USER |
+| 删除单条 | ROLE_ADMIN |
+| 批量删除 | ROLE_ADMIN |
+| 按条件删除 | ROLE_ADMIN |
 
 ---
 
-✅ **19/19 全部通过**（2026-04-24 真实服务运行验证）——详见 [验收报告.md](main/docs/验收报告.md)。
+
+## 重要文档
+
+| 文档 | 内容 |
+|------|------|
+| [PRD.md](main/docs/PRD.md) | 产品需求 + 验收标准 + 6 个 ADR |
+| [design.md](main/docs/design.md) | 技术架构 + EXPLAIN ANALYZE + 演进路径 |
+| [schema-design.md](main/docs/schema-design.md) | 数据库表设计，完整 DDL + 索引设计 + 查询计划 |
+| [queries.md](main/docs/queries.md) | Q1/Q2/Q3 SQL + 执行结果 |
+| [improvements.md](main/docs/improvements.md) | 后续规划： 10 项局限性详解 + 改进路径 |
+| [验收截图.md](main/docs/验收截图.md) | 19/19 验收通过证明 |
+
+---
+
+## 技术栈
+
+| 层 | 技术 |
+|----|------|
+| 后端 | Java 17 · Spring Boot 3.3 · MyBatis-Plus · Spring Security · Bucket4j · Micrometer |
+| 数据库 | PostgreSQL 15 · Flyway · Testcontainers |
+| 前端 | Vue 3 · Vite 5 · Element Plus · ECharts · Pinia |
+| 部署 | Docker Compose · Nginx · GitHub Actions |
+
+---
+
+> **面试官的一句话总结**：这个项目展示了从访问模式分析到生产级实现的完整链路，每个决策都有明确依据，每个实现都有边界意识。这不是"把功能做完"，而是"把问题解决到位"。

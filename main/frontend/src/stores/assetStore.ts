@@ -12,7 +12,16 @@ import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { AssetSparse, PaginationState, SortState, FilterState } from '@/types/asset'
 import type { PagedResponse } from '@/types/asset'
-import { listAssets, getAssetById, ApiError } from '@/services/assetService'
+import {
+  listAssets,
+  getAssetById,
+  ApiError,
+  uploadExcel as uploadExcelApi,
+  deleteAsset as deleteAssetApi,
+  deleteBatch as deleteBatchApi,
+  type UploadResult,
+  type DeleteResult,
+} from '@/services/assetService'
 import {
   buildQueryParams,
   buildDetailParams,
@@ -38,6 +47,12 @@ export const useAssetStore = defineStore('asset', () => {
 
   /** 详情加载中标志 */
   const detailLoading = ref(false)
+
+  /** 上传加载中标志 */
+  const uploadLoading = ref(false)
+
+  /** 删除加载中标志 */
+  const deleteLoading = ref(false)
 
   // ------------------- 查询状态 -------------------
 
@@ -153,6 +168,63 @@ export const useAssetStore = defineStore('asset', () => {
     fetchAssets()
   }
 
+  /**
+   * 上传 Excel 文件导入素材
+   */
+  async function uploadExcel(file: File, dataset?: number): Promise<UploadResult> {
+    uploadLoading.value = true
+    try {
+      const result = await uploadExcelApi(file, dataset)
+      ElMessage.success(`导入成功：新增 ${result.inserted} 条，更新 ${result.updated} 条`)
+      fetchAssets()
+      return result
+    } catch (error) {
+      if (error instanceof ApiError && error.message.includes('Unable to detect dataset format')) {
+        throw error
+      }
+      handleError(error, '上传失败')
+      throw error
+    } finally {
+      uploadLoading.value = false
+    }
+  }
+
+  /**
+   * 删除单条素材
+   */
+  async function deleteAsset(id: string): Promise<DeleteResult> {
+    deleteLoading.value = true
+    try {
+      const result = await deleteAssetApi(id)
+      ElMessage.success(`删除成功：${result.deleted} 条`)
+      fetchAssets()
+      return result
+    } catch (error) {
+      handleError(error, '删除失败')
+      throw error
+    } finally {
+      deleteLoading.value = false
+    }
+  }
+
+  /**
+   * 批量删除素材
+   */
+  async function deleteBatch(ids: string[]): Promise<DeleteResult> {
+    deleteLoading.value = true
+    try {
+      const result = await deleteBatchApi(ids)
+      ElMessage.success(`删除成功：${result.deleted} 条`)
+      fetchAssets()
+      return result
+    } catch (error) {
+      handleError(error, '批量删除失败')
+      throw error
+    } finally {
+      deleteLoading.value = false
+    }
+  }
+
   // ------------------- 错误处理 -------------------
 
   function handleError(error: unknown, defaultMsg: string) {
@@ -171,6 +243,8 @@ export const useAssetStore = defineStore('asset', () => {
     listLoading,
     currentAsset,
     detailLoading,
+    uploadLoading,
+    deleteLoading,
     queryState,
     selectedFields,
     // Actions
@@ -181,5 +255,8 @@ export const useAssetStore = defineStore('asset', () => {
     applyPagination,
     applyFields,
     resetFilters,
+    uploadExcel,
+    deleteAsset,
+    deleteBatch,
   }
 })

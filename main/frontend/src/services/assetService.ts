@@ -28,6 +28,15 @@ const http: AxiosInstance = axios.create({
   },
 })
 
+// ------------------- 请求拦截器（添加 API Key）-------------------
+
+const API_KEY = import.meta.env.VITE_API_KEY || 'dev-api-key-001'
+
+http.interceptors.request.use((config) => {
+  config.headers['X-API-Key'] = API_KEY
+  return config
+})
+
 // ------------------- 响应拦截器 -------------------
 
 /** 业务异常（code !== 0）*/
@@ -126,5 +135,47 @@ export async function fetchTopTags(limit = 5): Promise<TopTag[]> {
  */
 export async function fetchPlatformApproval(): Promise<PlatformApproval[]> {
   const response = await http.get<ApiEnvelope<PlatformApproval[]>>('/stats/platform-approval')
+  return unwrap(response)
+}
+
+// ------------------- 上传 & 删除 API -------------------
+
+export interface UploadResult {
+  totalRows: number
+  inserted: number
+  updated: number
+  rejected: number
+  rejectedRecords: Array<{
+    rowNum: number
+    rawId: string
+    reason: string
+  }>
+}
+
+export interface DeleteResult {
+  deleted: number
+  notFound: number
+  notFoundIds: string[]
+}
+
+export async function uploadExcel(file: File, dataset?: number): Promise<UploadResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (dataset !== undefined) {
+    formData.append('dataset', String(dataset))
+  }
+  const response = await http.post<ApiEnvelope<UploadResult>>('/assets/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return unwrap(response)
+}
+
+export async function deleteAsset(id: string): Promise<DeleteResult> {
+  const response = await http.delete<ApiEnvelope<DeleteResult>>(`/assets/${id}`)
+  return unwrap(response)
+}
+
+export async function deleteBatch(ids: string[]): Promise<DeleteResult> {
+  const response = await http.delete<ApiEnvelope<DeleteResult>>('/assets/batch', { data: ids })
   return unwrap(response)
 }

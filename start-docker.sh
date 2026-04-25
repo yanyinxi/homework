@@ -57,42 +57,59 @@ until docker info &>/dev/null; do
 done
 ok "Docker daemon 可用"
 
-# ── 配置 Docker 镜像加速（仅首次或未配置时） ─────────────────────────────────
+# ── 配置 Docker 镜像加速（支持 macOS + Linux） ───────────────────────────────
 step "配置 Docker 镜像加速"
-DOCKER_CONF="$HOME/.docker/daemon.json"
-if [[ -f "$DOCKER_CONF" ]] && grep -q "daocloud\|tencent\|baidu\|aliyun" "$DOCKER_CONF" 2>/dev/null; then
-    ok "镜像加速器已配置，跳过"
-else
-    warn "正在配置镜像加速器..."
-    mkdir -p "$HOME/.docker"
-    # 保留现有配置（如有），追加 registry-mirrors
-    if [[ -f "$DOCKER_CONF" ]] && [[ -s "$DOCKER_CONF" ]]; then
-        # 用 Python 安全合并 JSON
-        python3 -c "
-import json, sys
-with open('$DOCKER_CONF') as f:
-    cfg = json.load(f)
-cfg.setdefault('registry-mirrors', [])
-mirrors = ['https://docker.m.daocloud.io','https://mirror.ccs.tencentyun.com','https://mirror.baidubce.com']
-for m in mirrors:
-    if m not in cfg['registry-mirrors']:
-        cfg['registry-mirrors'].append(m)
-with open('$DOCKER_CONF', 'w') as f:
-    json.dump(cfg, f, indent=2)
-" 2>/dev/null || true
+OS="$(uname -s)"
+
+# 国内镜像源列表
+MIRRORS='["https://docker.m.daocloud.io","https://mirror.ccs.tencentyun.com","https://mirror.baidubce.com"]'
+
+if [[ "$OS" == "Darwin" ]]; then
+    # macOS: Docker Desktop 配置路径
+    DOCKER_CONF="$HOME/.docker/daemon.json"
+    if [[ -f "$DOCKER_CONF" ]] && grep -q "daocloud\|tencent\|baidu\|aliyun" "$DOCKER_CONF" 2>/dev/null; then
+        ok "镜像加速器已配置，跳过"
     else
-        cat > "$DOCKER_CONF" <<'EOF'
-{
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://mirror.ccs.tencentyun.com",
-    "https://mirror.baidubce.com"
-  ]
-}
-EOF
+        warn "正在配置镜像加速器..."
+        mkdir -p "$HOME/.docker"
+        if [[ -f "$DOCKER_CONF" ]] && [[ -s "$DOCKER_CONF" ]]; then
+            python3 -c "
+import json
+with open('$DOCKER_CONF') as f: cfg = json.load(f)
+cfg.setdefault('registry-mirrors', [])
+for m in $MIRRORS:
+    if m not in cfg['registry-mirrors']: cfg['registry-mirrors'].append(m)
+with open('$DOCKER_CONF', 'w') as f: json.dump(cfg, f, indent=2)
+" 2>/dev/null || true
+        else
+            echo "{\"registry-mirrors\": $MIRRORS}" > "$DOCKER_CONF"
+        fi
+        ok "镜像加速器已写入 $DOCKER_CONF"
+        warn "提示：若拉取镜像仍超时，请在 Docker Desktop → Settings → Apply & Restart 后重试"
     fi
-    ok "镜像加速器已写入 $DOCKER_CONF"
-    warn "提示：若拉取镜像仍超时，请在 Docker Desktop → Settings → Apply & Restart 后重试"
+
+elif [[ "$OS" == "Linux" ]]; then
+    # Linux: Docker daemon 配置路径
+    DOCKER_CONF="/etc/docker/daemon.json"
+    if [[ -f "$DOCKER_CONF" ]] && grep -q "daocloud\|tencent\|baidu\|aliyun" "$DOCKER_CONF" 2>/dev/null; then
+        ok "镜像加速器已配置，跳过"
+    else
+        warn "正在配置镜像加速器（需要 sudo 权限）..."
+        sudo mkdir -p /etc/docker
+        if [[ -f "$DOCKER_CONF" ]] && [[ -s "$DOCKER_CONF" ]]; then
+            echo "{\"registry-mirrors\": $MIRRORS}" | sudo tee "$DOCKER_CONF" > /dev/null
+        else
+            echo "{\"registry-mirrors\": $MIRRORS}" | sudo tee "$DOCKER_CONF" > /dev/null
+        fi
+        ok "镜像加速器已写入 $DOCKER_CONF"
+        warn "正在重启 Docker 服务..."
+        sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || {
+            warn "无法自动重启 Docker，请手动执行: sudo systemctl restart docker"
+        }
+        ok "Docker 服务已重启"
+    fi
+else
+    warn "未知系统: $OS，跳过镜像加速配置"
 fi
 
 # ── 停止并清理旧容器（避免容器名冲突） ───────────────────────────────────────

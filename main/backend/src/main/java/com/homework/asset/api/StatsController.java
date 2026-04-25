@@ -1,6 +1,7 @@
 package com.homework.asset.api;
 
 import com.homework.asset.api.dto.ApiEnvelope;
+import com.homework.asset.config.AssetMetrics;
 import com.homework.asset.service.AssetStatsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -19,16 +20,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class StatsController {
 
   private final AssetStatsService statsService;
+  private final AssetMetrics metrics;
 
-  public StatsController(AssetStatsService statsService) {
+  public StatsController(AssetStatsService statsService, AssetMetrics metrics) {
     this.statsService = statsService;
+    this.metrics = metrics;
   }
 
   /** Q1：审核已通过素材中，各上传人的平均文件大小。 */
   @Operation(summary = "Q1 各上传人平均文件大小")
   @GetMapping("/uploader-avg-size")
   public ApiEnvelope<List<Map<String, Object>>> uploaderAvgSize() {
-    return ApiEnvelope.ok(statsService.uploaderAvgSize());
+    long start = System.currentTimeMillis();
+    List<Map<String, Object>> result = statsService.uploaderAvgSize();
+    metrics.recordStatsRequest(System.currentTimeMillis() - start);
+    return ApiEnvelope.ok(result);
   }
 
   /** Q2：按标签统计素材数量，Top N。 */
@@ -37,13 +43,19 @@ public class StatsController {
   public ApiEnvelope<List<Map<String, Object>>> topTags(
       @Parameter(description = "返回 Top N 标签，默认 5，最大 50", example = "5")
       @RequestParam(name = "topN", defaultValue = "5") int topN) {
-    return ApiEnvelope.ok(statsService.topTags(topN));
+    long start = System.currentTimeMillis();
+    List<Map<String, Object>> result = statsService.topTags(topN);
+    metrics.recordStatsRequest(System.currentTimeMillis() - start);
+    return ApiEnvelope.ok(result);
   }
 
   /** Q3：各投放平台的审核通过率。 */
   @Operation(summary = "Q3 各平台审核通过率")
   @GetMapping("/platform-approval")
   public ApiEnvelope<List<Map<String, Object>>> platformApproval() {
-    return ApiEnvelope.ok(statsService.platformApprovalRate());
+    long start = System.currentTimeMillis();
+    List<Map<String, Object>> result = statsService.platformApprovalRate();
+    metrics.recordStatsRequest(System.currentTimeMillis() - start);
+    return ApiEnvelope.ok(result);
   }
 }

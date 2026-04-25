@@ -166,4 +166,69 @@
         ORDER BY "approvalRate" DESC NULLS LAST
     </select>
 
+    <!-- Keyset/Cursor 分页：基于 uploaded_at DESC, id DESC，避免 OFFSET 扫描 -->
+    <select id="selectByCursor" resultType="java.util.Map">
+        SELECT
+        <choose>
+            <when test="fields != null and !fields.isEmpty()">
+                <foreach collection="fields" item="f" separator=",">
+                    <choose>
+                        <when test="f == 'id'">id</when>
+                        <when test="f == 'title'">title</when>
+                        <when test="f == 'uploader'">uploader</when>
+                        <when test="f == 'uploadedAt'">uploaded_at AS "uploadedAt"</when>
+                        <when test="f == 'fileSizeBytes'">file_size_bytes AS "fileSizeBytes"</when>
+                        <when test="f == 'status'">status</when>
+                        <when test="f == 'tags'">tags</when>
+                        <when test="f == 'city'">city</when>
+                        <when test="f == 'platform'">platform</when>
+                        <when test="f == 'reviewer'">reviewer</when>
+                        <when test="f == 'remark'">remark</when>
+                        <when test="f == 'resolution'">resolution</when>
+                        <when test="f == 'durationSec'">duration_sec AS "durationSec"</when>
+                        <when test="f == 'sourceDataset'">source_dataset AS "sourceDataset"</when>
+                        <when test="f == 'sourceId'">source_id AS "sourceId"</when>
+                        <when test="f == 'ingestedAt'">ingested_at AS "ingestedAt"</when>
+                    </choose>
+                </foreach>
+            </when>
+            <otherwise>
+                id, title, uploader,
+                uploaded_at AS "uploadedAt",
+                file_size_bytes AS "fileSizeBytes",
+                status, tags, city, platform, reviewer, remark, resolution,
+                duration_sec AS "durationSec",
+                source_dataset AS "sourceDataset",
+                source_id AS "sourceId",
+                ingested_at AS "ingestedAt"
+            </otherwise>
+        </choose>
+        FROM assets
+        <where>
+            <include refid="filters"/>
+            <if test="cursorUploadedAt != null and cursorId != null">
+                AND (uploaded_at, id) &lt; (#{cursorUploadedAt}::timestamptz, #{cursorId}::uuid)
+            </if>
+        </where>
+        ORDER BY uploaded_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <delete id="deleteBatchByIds">
+        DELETE FROM assets
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <delete id="deleteByParams">
+        DELETE FROM assets
+        <where>
+            <if test="params.status != null">AND status = #{params.status}</if>
+            <if test="params.uploader != null">AND uploader = #{params.uploader}</if>
+            <if test="params.sourceDataset != null">AND source_dataset = #{params.sourceDataset}</if>
+        </where>
+    </delete>
+
 </mapper>

@@ -1,6 +1,6 @@
-# start-local.ps1 — 一键本地启动（Windows）
+# start-local-window.ps1 — 一键本地启动（Windows）
 # 自动检测并安装缺失依赖（需要 winget，Windows 10 1709+ 自带）
-# 用法：右键"以管理员身份运行 PowerShell"，再执行 .\start-local.ps1
+# 用法：右键"以管理员身份运行 PowerShell"，再执行 .\start-local-window.ps1
 param()
 
 $ErrorActionPreference = "Stop"

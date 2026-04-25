@@ -25,6 +25,11 @@
           <el-icon><Film /></el-icon>
           <span>素材列表</span>
         </el-menu-item>
+
+        <el-menu-item index="/monitoring">
+          <el-icon><Monitor /></el-icon>
+          <span>运维监控</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

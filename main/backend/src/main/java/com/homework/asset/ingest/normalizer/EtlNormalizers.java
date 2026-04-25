@@ -153,6 +153,20 @@ public final class EtlNormalizers {
     return List.of(trimmed);
   }
 
+  /** 使用指定分隔符解析标签 */
+  public static List<String> normalizeTags(String raw, String delimiter) {
+    if (raw == null || raw.isBlank()) return Collections.emptyList();
+    String trimmed = raw.strip();
+    if (trimmed.startsWith("[")) return parsePythonList(trimmed);
+    return splitAndClean(trimmed, delimiter);
+  }
+
+  /** 解析 Python list 格式的标签字符串 */
+  public static List<String> normalizeTagsPythonList(String raw) {
+    if (raw == null || raw.isBlank()) return Collections.emptyList();
+    return parsePythonList(raw.strip());
+  }
+
   private static List<String> parsePythonList(String raw) {
     Matcher m = PYTHON_LIST_ITEM.matcher(raw);
     List<String> result = new java.util.ArrayList<>();

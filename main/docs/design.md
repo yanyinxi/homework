@@ -1,6 +1,9 @@
 # 视频素材查询服务 · 技术设计文档
 
-> 版本：1.0 | 日期：2026-04-23 | 作者：Java 架构师
+> 版本：1.1 | 日期：2026-04-24 | 作者：Java 架构师
+>
+> **更新日志**：
+> - v1.1 (2026-04-24): 新增安全架构设计章节（API Key 认证 + Bucket4j 限流 + Micrometer 监控）
 
 ---
 
@@ -68,15 +71,70 @@ idx_assets_extra_gin        -- JSONB 路径查询
 ### Adapter + Normalizer 模式
 
 ```
-xls → ExcelReader → DatasetXAdapter → CanonicalAsset → Upsert → PostgreSQL
-                           ↓
-                    5 个 Normalizer（纯函数、可单元测试）
+xls → ExcelReader → DynamicDatasetAdapter → CanonicalAsset → Upsert → PostgreSQL
+                           │
+                           ▼
+                 ┌─────────────────────┐
+                 │ dataset-mappings.json│
+                 │                     │
+                 │ • 字段映射规则      │
+                 │ • 类型转换规则      │
+                 │ • 默认值设置        │
+                 └─────────────────────┘
+                           │
+                           ▼
+                    5 个 Normalizer
+                  （纯函数、可单元测试）
 ```
 
 **为什么在应用层做归一化而不在 DB 层**：
 1. 脏数据清洗是业务语义判断（"通过 = approved"），放 DB 层失去可测性
 2. 每个 Normalizer 可独立单元测试，覆盖边界值
-3. 新增数据集只加一个 Adapter，不改 schema 和 API
+3. 新增数据集只加 JSON 配置，不改代码和 schema
+
+### 动态数据集适配（配置驱动）
+
+```
+扩展能力：
+┌───────────────────────────────────────────────────────────────┐
+│                                                               │
+│   新增数据集（100/1000份）：                                   │
+│                                                               │
+│   ┌─────────────┐                                            │
+│   │ 编辑 JSON   │  1. 定义字段映射                           │
+│   │ 配置文件    │  2. 指定文件匹配模式                        │
+│   └──────┬──────┘  3. 放入 samples/ 目录                     │
+│          │                                                    │
+│          ▼                                                    │
+│   ┌─────────────┐                                            │
+│   │ 自动加载    │  DatasetMappingLoader                      │
+│   │ 映射规则    │  → 启动时读取 JSON                          │
+│   └──────┬──────┘  → 按文件名匹配数据集                      │
+│          │                                                    │
+│          ▼                                                    │
+│   ┌─────────────┐                                            │
+│   │ Dynamic     │  一个适配器处理所有数据集                   │
+│   │ Adapter     │  根据配置动态转换字段                       │
+│   └─────────────┘                                            │
+│                                                               │
+│   效果：新增数据集 = 5分钟配置，无需改代码                     │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### 支持的字段类型
+
+| 类型 | 输入示例 | 输出 | 说明 |
+|------|----------|------|------|
+| `string` | `"标题"` | 直接映射 | 无转换 |
+| `integer` | `120` | `120` | 整数 |
+| `bytes` | `123456789` | `123456789` | 字节大小 |
+| `size_with_unit` | `"63.76MB"` | `66857206` | 自动转 bytes |
+| `excel_date` | `45540` | `2024-09-01` | Excel 序列号 |
+| `unix_timestamp` | `1715336373` | `2024-05-10` | Unix 时间戳 |
+| `status` | `"已通过"` | `"approved"` | 中英文归一化 |
+| `tags` | `"节日;促销"` | `["节日", "促销"]` | 分隔符解析 |
+| `platform` | `"千川"` | `"qianchuan"` | 平台归一化 |
 
 ### 三份数据集的差异处理
 
@@ -200,6 +258,192 @@ normalizer_rules 表
 
 ---
 
+## 8. 安全与可观测性架构
+
+> 生产级服务的必备能力。本项目实现了认证、限流、监控三大核心特性。
+
+### 架构总览
+
+```
+API 请求处理链：
+┌───────────────────────────────────────────────────────────────────────────┐
+│                                                                           │
+│   HTTP Request                                                            │
+│        │                                                                  │
+│        ▼                                                                  │
+│   ┌─────────────┐      ┌─────────────┐      ┌─────────────┐             │
+│   │ RateLimit   │─────▶│ ApiKeyAuth  │─────▶│ Controller  │             │
+│   │   Filter    │      │   Filter    │      │             │             │
+│   └──────┬──────┘      └──────┬──────┘      └──────┬──────┘             │
+│          │                    │                    │                     │
+│          ▼                    ▼                    ▼                     │
+│       429 限流            401 认证             200 OK                   │
+│       "Too Many"          "Missing Key"        业务处理                  │
+│                                                    │                     │
+│                                                    ▼                     │
+│                                             ┌─────────────┐              │
+│                                             │AssetMetrics │              │
+│                                             │             │              │
+│                                             │ 记录延迟    │              │
+│                                             │ 计数请求    │              │
+│                                             └──────┬──────┘              │
+│                                                    │                     │
+│                                                    ▼                     │
+│                                             ┌─────────────┐              │
+│                                             │ Prometheus  │              │
+│                                             │   /metrics  │              │
+│                                             └─────────────┘              │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.1 认证架构
+
+**选择 API Key 而非 JWT 的原因**：
+
+| 场景 | API Key | JWT |
+|------|---------|-----|
+| 内部服务调用 | ✅ 简单够用 | 过度设计 |
+| 第三方集成 | ✅ 易于分发和撤销 | 需要完整 OAuth2 流程 |
+| 用户登录 | ❌ 不适合 | ✅ 适合 |
+| Token 刷新 | 不需要 | 需要刷新机制 |
+
+**实现细节**：
+
+```
+认证流程：
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  Client  │───▶│ X-API-Key│───▶│  白名单  │───▶│ Security │
+│          │    │  Header  │    │  验证    │    │ Context  │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+                                     │
+                                     ▼
+                              ┌──────────┐
+                              │   401    │
+                              │Unauthorized│
+                              └──────────┘
+```
+
+**安全设计要点**：
+1. API Key 存储在配置文件，生产环境应迁移到 Vault / AWS Secrets Manager
+2. 支持 RBAC（ROLE_USER / ROLE_ADMIN），为后续权限扩展预留
+3. 公开端点（Swagger、Actuator）无需认证，便于运维
+
+### 8.2 限流架构
+
+**选择 Bucket4j 本地限流的原因**：
+
+| 场景 | 本地限流 | Redis 分布式限流 |
+|------|---------|-----------------|
+| 单实例部署 | ✅ 简单高效 | 过度设计 |
+| 多实例部署 | ❌ 不精确 | ✅ 精确控制 |
+| 成本 | ✅ 零依赖 | 需要Redis |
+
+**Token Bucket 算法**：
+
+```
+限流示例（10 请求/秒）：
+┌────────────────────────────────────────────────────────┐
+│                                                        │
+│  Bucket: [██████████] 10 tokens                       │
+│                                                        │
+│  请求1: [█████████░] 9 tokens  → 200 OK               │
+│  请求2: [████████░░] 8 tokens  → 200 OK               │
+│  ...                                                   │
+│  请求10: [░░░░░░░░░░] 0 tokens → 200 OK               │
+│  请求11: [░░░░░░░░░░] 0 tokens → 429 Too Many         │
+│                                                        │
+│  1秒后自动补充 10 tokens                               │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+```
+
+**限流 Key 策略**：
+- 有 API Key：按 Key 限流（`apikey:dev-api-key-001`）
+- 无 API Key：按 IP 限流（`ip:192.168.1.1`）
+- 支持代理场景：读取 `X-Forwarded-For` / `X-Real-IP`
+
+### 8.3 监控架构
+
+**Micrometer + Prometheus 技术栈**：
+
+```
+Application (Micrometer)
+        ↓
+/actuator/prometheus (metrics endpoint)
+        ↓
+Prometheus (scrape every 15s)
+        ↓
+Grafana (visualization + alerting)
+```
+
+**自定义业务指标**：
+
+| 指标名 | 类型 | 标签 | 用途 |
+|--------|------|------|------|
+| `asset_api_requests_total` | Counter | endpoint, method | 请求计数 |
+| `asset_api_duration_seconds` | Timer | endpoint | 延迟分布 |
+| `jvm_memory_used_bytes` | Gauge | area, id | 内存监控 |
+
+**告警规则示例**（Prometheus）：
+
+```yaml
+groups:
+  - name: asset-service-alerts
+    rules:
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, asset_api_duration_seconds) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API P99 延迟超过 1 秒"
+```
+
+### 8.4 安全过滤器链
+
+```
+HTTP Request
+    ↓
+┌─────────────────────────────────────────┐
+│  Spring Security FilterChain            │
+│  ┌───────────────────────────────────┐  │
+│  │ 1. CorsFilter (CORS 预检)        │  │
+│  └───────────────────────────────────┘  │
+│  ┌───────────────────────────────────┐  │
+│  │ 2. ApiKeyAuthFilter (认证)       │  │
+│  │    - 检查 X-API-Key Header       │  │
+│  │    - 验证配置白名单              │  │
+│  │    - 设置 SecurityContext        │  │
+│  └───────────────────────────────────┘  │
+│  ┌───────────────────────────────────┐  │
+│  │ 3. RateLimitFilter (限流)        │  │
+│  │    - 解析限流 Key                │  │
+│  │    - Token Bucket 消费           │  │
+│  │    - 设置 X-RateLimit-Remaining  │  │
+│  └───────────────────────────────────┘  │
+│  ┌───────────────────────────────────┐  │
+│  │ 4. AuthorizationFilter (鉴权)    │  │
+│  │    - 检查 @PreAuthorize          │  │
+│  │    - 验证角色权限                │  │
+│  └───────────────────────────────────┘  │
+└─────────────────────────────────────────┘
+    ↓
+Controller → Service → Mapper → Database
+```
+
+### 8.5 生产环境演进
+
+| 当前实现 | 局限 | 演进方案 |
+|----------|------|----------|
+| API Key 配置文件 | 无法动态管理 | 迁移到 Vault / 数据库 |
+| 本地限流 | 多实例不精确 | Bucket4j + Redis |
+| 无刷新机制 | Key 泄露风险 | 添加过期时间 + 刷新 API |
+| 无审计日志 | 无法追溯 | 添加 access_log 表 |
+| 无 IP 黑名单 | 无法封禁 | 集成 WAF / Nginx |
+
+---
+
 ## 8. 查询性能基准（EXPLAIN ANALYZE）
 
 > 环境：PostgreSQL 15，69 条记录，Docker 容器本地执行。数据量小，Seq Scan 是预期行为（索引在大数据集下才触发），Planning Time 已包含。
@@ -259,18 +503,18 @@ Planning Time: 2.811 ms  |  Execution Time: 0.285 ms
 
 ## 9. 局限性与未来改进
 
-| # | 局限性 | 生产改进方案 |
-|---|-------|------------|
-| 1 | 分页用 offset，大 offset 性能劣化 | 切换 keyset/cursor 分页 |
-| 2 | 中文全文搜只有 ILIKE，无分词 | pg_jieba + tsvector；或 ES 读侧 projection |
-| 3 | ETL 是一次性脚本 | Debezium CDC + 增量 upsert |
-| 4 | 只读接口无鉴权 | API Key + 速率限制（Bucket4j） |
-| 5 | 无缓存层 | Caffeine 本地缓存；热点数据加 Redis |
-| 6 | 只有结构化日志 | Prometheus Micrometer + OpenTelemetry |
-| 7 | ETL 失败行无单独 DLQ | 专门 reject 表 + 人工复核流程 |
-| 8 | 未预留 tenant_id | 多租户必加 |
-| 9 | extra JSONB 无上限管理 | 超阈值字段升级为正式列 |
-| 10 | ES 演进路径未提前铺垫 | Debezium CDC pipeline：PG → Kafka → ES，PG 仍为 SOT |
+| # | 局限性 | 生产改进方案 | 状态 |
+|---|-------|------------|------|
+| 1 | 分页用 offset，大 offset 性能劣化 | 切换 keyset/cursor 分页 | 待优化 |
+| 2 | 中文全文搜只有 ILIKE，无分词 | pg_jieba + tsvector；或 ES 读侧 projection | 待优化 |
+| 3 | ETL 是一次性脚本 | Debezium CDC + 增量 upsert | 待优化 |
+| 4 | ~~只读接口无鉴权~~ | ✅ **已实现**：API Key + Spring Security | ✅ 已完成 |
+| 5 | ~~无限流保护~~ | ✅ **已实现**：Bucket4j 本地限流 | ✅ 已完成 |
+| 6 | ~~只有结构化日志~~ | ✅ **已实现**：Prometheus Micrometer | ✅ 已完成 |
+| 7 | ETL 失败行无单独 DLQ | 专门 reject 表 + 人工复核流程 | 待优化 |
+| 8 | 未预留 tenant_id | 多租户必加 | 待优化 |
+| 9 | extra JSONB 无上限管理 | 超阈值字段升级为正式列 | 待优化 |
+| 10 | ES 演进路径未提前铺垫 | Debezium CDC pipeline：PG → Kafka → ES，PG 仍为 SOT | 待优化 |
 
 ---
 
@@ -280,6 +524,9 @@ Planning Time: 2.811 ms  |  Execution Time: 0.285 ms
 |----|------|------|------|
 | 语言 | Java | 17 | LTS，record/switch expression |
 | 框架 | Spring Boot | 3.3.x | MVC 同步模型 |
+| 安全 | Spring Security | 6.x | 认证鉴权框架 |
+| 安全 | Bucket4j | 8.10.x | 本地限流 |
+| 监控 | Micrometer | 1.12+ | Prometheus 指标 |
 | ORM | MyBatis-Plus | 3.5.x | BaseMapper + 动态 XML |
 | 迁移 | Flyway | 9.x | 版本化 Schema |
 | 数据库 | PostgreSQL | 15 | 主存储 |
