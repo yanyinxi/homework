@@ -19,11 +19,17 @@ echo -e "\n${BOLD}${CYAN}╔═════════════════�
 echo -e "║    视频素材查询服务 — Docker 一键启动    ║"
 echo -e "╚══════════════════════════════════════════╝${RESET}"
 
-# ── 检查 Docker 是否运行 ──────────────────────────────────────────────────────
+# ── 检查 Docker 是否运行（含启动等待）──────────────────────────────────────
 step "检查 Docker"
-if ! docker info &>/dev/null; then
-    err "Docker 未运行，请先启动 Docker Desktop 后重试"
-fi
+retry=0
+until docker info &>/dev/null; do
+    ((retry++))
+    if [[ $retry -ge 10 ]]; then
+        err "Docker daemon 不可用，请打开 Docker Desktop 等待其完全启动（左下角显示 Engine running）后重试"
+    fi
+    warn "Docker daemon 启动中，等待（${retry}/10）..."
+    sleep 2
+done
 ok "Docker 正在运行: $(docker version --format '{{.Server.Version}}' 2>/dev/null)"
 
 # ── 释放端口冲突 ──────────────────────────────────────────────────────────────
