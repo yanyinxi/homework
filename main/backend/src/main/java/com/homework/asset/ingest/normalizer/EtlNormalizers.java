@@ -14,9 +14,17 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * ETL 归一化工具集：把三份异构数据集的日期、大小、状态、标签、平台统一转换为标准格式。
- *
- * <p>所有方法均为纯函数（无副作用），可直接单元测试。
+ * ETL 归一化工具集。
+ * 
+ * 把三份异构数据集的以下字段统一转换为标准格式：
+ * - 日期：Excel 序列号 / Unix 时间戳 → Instant（UTC）
+ * - 文件大小：字符串含单位 / 字节整数 / 数值+单位列 → Long bytes
+ * - 审核状态：中文 / 英文混合 → pending/approved/rejected
+ * - 标签：分号 / 逗号 / Python list 字符串 → String[]
+ * - 平台：千川 / qianchuan / N/A → canonical code
+ * 
+ * 设计：所有方法均为纯函数（无副作用），可直接单元测试。
+ * 边界值处理完整：Excel 1900 年闰年 Bug、浮点误差、null 检查。
  */
 public final class EtlNormalizers {
 

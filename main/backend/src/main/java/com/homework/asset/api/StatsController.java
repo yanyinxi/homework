@@ -13,7 +13,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 统计聚合接口：对应作业要求的三条指定查询。 */
+/**
+ * 统计聚合 API 控制器。
+ * 
+ * 三个端点对应作业要求的指定查询：
+ * - Q1：审核已通过素材中，各上传人的平均文件大小
+ * - Q2：按标签统计素材数量，Top N
+ * - Q3：各投放平台的审核通过率
+ */
 @Tag(name = "Stats", description = "素材统计聚合接口（对应作业三条指定查询）")
 @RestController
 @RequestMapping("/api/v1/stats")

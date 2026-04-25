@@ -1,12 +1,9 @@
 package com.homework.asset.config;
 
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -14,14 +11,29 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** API Key 认证过滤器。通过 Header X-API-Key 进行认证。 */
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * API Key 认证过滤器。
+ * 
+ * 功能：
+ * - 通过 Header X-API-Key 进行认证
+ * - 公开路径（Actuator、Swagger）无需认证
+ * - 支持 ROLE_USER 和 ROLE_ADMIN 角色
+ */
 @Component
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
+  /** API Key Header 名称 */
   private static final String API_KEY_HEADER = "X-API-Key";
+
+  /** 无需认证的公开路径 */
   private static final String[] PUBLIC_PATHS = {
-    "/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics",
-    "/swagger-ui", "/api-docs", "/swagger-ui.html"
+      "/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics",
+      "/swagger-ui", "/api-docs", "/swagger-ui.html"
   };
   private final ApiKeyProperties properties;
 
@@ -77,11 +89,10 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
   }
 
   private Authentication createAuthentication(ApiKeyProperties.ApiKeyEntry entry) {
-    List<SimpleGrantedAuthority> authorities =
-        Arrays.stream(entry.getRoles().split(","))
-            .map(String::trim)
-            .map(SimpleGrantedAuthority::new)
-            .toList();
+    List<SimpleGrantedAuthority> authorities = Arrays.stream(entry.getRoles().split(","))
+        .map(String::trim)
+        .map(SimpleGrantedAuthority::new)
+        .toList();
 
     return new UsernamePasswordAuthenticationToken(entry.getName(), null, authorities);
   }

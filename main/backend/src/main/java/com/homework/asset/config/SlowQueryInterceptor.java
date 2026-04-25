@@ -21,6 +21,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+/**
+ * 慢查询监控拦截器。
+ * 
+ * 功能：监控 SQL 执行时间，超过阈值（500ms）打印 WARN 日志并记录 Prometheus 指标。
+ */
 @Component
 @Intercepts({
   @Signature(

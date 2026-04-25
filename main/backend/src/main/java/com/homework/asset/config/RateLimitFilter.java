@@ -21,6 +21,19 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+/**
+ * 限流过滤器。
+ * 
+ * 算法：Bucket4j 令牌桶
+ * 
+ * 功能：
+ * - API Key 级别限流（识别不同 API Key 消费者）
+ * - IP 级别限流（未认证请求按 IP 限流）
+ * - 自动清理过期 Bucket（防止内存泄漏）
+ * - 返回 X-RateLimit-Remaining header
+ * 
+ * 配置：app.rate-limit.requests-per-second（默认 10）
+ */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 

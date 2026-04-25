@@ -24,11 +24,17 @@ import org.springframework.stereotype.Component;
  *
  * <p>启动时若检测到 --ingest 参数则执行导入，否则跳过（不影响正常 API 服务）。
  *
- * <p>事务策略：每个 dataset 作为一个批次，通过 {@link IngestBatchService#upsertBatch} 使用独立事务。
- * 归一化阶段的脏行会被记录并跳过；写库阶段若任意 upsert 失败则整批回滚，不影响其他 dataset 批次。
+ * <p>工作流：
+ * 1. 读取 XLS 文件（samples/ 目录或绝对路径）
+ * 2. 根据文件名或显式指定选择适配器
+ * 3. 逐行转换和归一化（脏数据记录下来）
+ * 4. 批量 Upsert 到数据库（source_dataset + source_id 幂等）
+ * 5. 生成审计日志
+ * 
+ * <p>事务策略：每个 dataset 作为一个批次，独立事务。
+ * 归一化阶段脏行被跳过；写库失败则整批回滚，不影响其他 dataset。
  *
  * <p>用法：
- *
  * <pre>
  *   --ingest=all         # 导入全部三份数据集
  *   --ingest=1           # 只导入数据集1

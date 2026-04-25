@@ -1,11 +1,15 @@
 /**
- * assetService.ts — Axios 封装的后端 API 客户端
+ * assetService.ts - 后端 API 客户端（Axios 封装）
  *
- * 统一处理：
- * - 响应拦截器：code !== 0 时抛出业务异常
- * - 基础路径：/api/v1
- * - 开发期 proxy 在 vite.config.ts 中配置（/api → http://localhost:8080）
- * - 生产期 proxy 在 nginx.conf 中配置（/api → backend:8080）
+ * 职责：
+ * - 统一处理 HTTP 请求/响应（基础 URL、超时、Header）
+ * - 响应拦截：code !== 0 时抛出业务异常
+ * - 添加 X-API-Key 认证头
+ * - 开发期 proxy 在 vite.config.ts，生产期 proxy 在 nginx.conf
+ * 
+ * API 基础路径：/api/v1
+ * - /assets - 素材查询和操作
+ * - /stats - 统计聚合查询
  */
 
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
@@ -18,7 +22,7 @@ import type {
   PlatformApproval,
 } from '@/types/asset'
 
-// ------------------- Axios 实例配置 -------------------
+// ─────────────────── Axios 实例配置 ───────────────
 
 const http: AxiosInstance = axios.create({
   baseURL: '/api/v1',
@@ -28,7 +32,7 @@ const http: AxiosInstance = axios.create({
   },
 })
 
-// ------------------- 请求拦截器（添加 API Key）-------------------
+// ─────────────────── 请求拦截器（添加 API Key）───────────────
 
 const API_KEY = import.meta.env.VITE_API_KEY || 'dev-api-key-001'
 
@@ -37,9 +41,11 @@ http.interceptors.request.use((config) => {
   return config
 })
 
-// ------------------- 响应拦截器 -------------------
+// ─────────────────── 响应拦截器 ───────────────
 
-/** 业务异常（code !== 0）*/
+/**
+ * 业务异常：code !== 0 时抛出
+ */
 export class ApiError extends Error {
   constructor(
     public readonly code: number,
@@ -72,7 +78,7 @@ http.interceptors.response.use(
   },
 )
 
-// ------------------- 辅助函数 -------------------
+// ─────────────────── 辅助函数 ───────────────
 
 /** 从 ApiEnvelope 中取出 data */
 function unwrap<T>(response: AxiosResponse<ApiEnvelope<T>>): T {

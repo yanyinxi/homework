@@ -11,6 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * ETL 批次写入服务。
+ * 
+ * 职责：
+ * - 批量 Upsert Asset 实体（INSERT ON CONFLICT DO UPDATE）
+ * - 统计插入 vs 更新的条数
+ * - 事务管理（整批提交或回滚）
  */
 @Service
 public class IngestBatchService {

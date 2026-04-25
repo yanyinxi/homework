@@ -14,6 +14,11 @@ import org.apache.ibatis.type.JdbcType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * MyBatis-Plus 配置。
+ * 
+ * 包含：分页插件、UUID 类型处理器、PostgreSQL text[] 类型处理器
+ */
 @Configuration
 public class MyBatisPlusConfig {
 

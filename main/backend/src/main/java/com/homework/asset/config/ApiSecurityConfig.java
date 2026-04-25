@@ -15,6 +15,14 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Spring Security 安全配置。
+ * 
+ * 配置要点：
+ * - API 端点需要认证
+ * - Actuator/Swagger 端点公开访问
+ * - 无状态 Session（JWT 友好）
+ */
 @Configuration
 @EnableWebSecurity
 public class ApiSecurityConfig {

@@ -5,15 +5,31 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-/** API Key 安全配置属性。 */
+/**
+ * API Key 安全配置属性。
+ * 
+ * 配置示例（application.yml）：
+ * <pre>
+ * app:
+ *   security:
+ *     enabled: true
+ *     api-keys:
+ *       - key: "dev-api-key-001"
+ *         name: "Developer"
+ *         roles: "ROLE_USER"
+ *       - key: "admin-api-key-001"
+ *         name: "Admin"
+ *         roles: "ROLE_ADMIN,ROLE_USER"
+ * </pre>
+ */
 @Component
 @ConfigurationProperties(prefix = "app.security")
 public class ApiKeyProperties {
 
-  /** 是否启用认证。 */
+  /** 是否启用认证 */
   private boolean enabled = true;
 
-  /** API Key 列表。 */
+  /** API Key 列表 */
   private List<ApiKeyEntry> apiKeys = new ArrayList<>();
 
   public boolean isEnabled() {

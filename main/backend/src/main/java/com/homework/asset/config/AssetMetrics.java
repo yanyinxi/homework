@@ -88,26 +88,31 @@ public class AssetMetrics {
             .register(registry);
   }
 
+  /** 记录列表查询请求 */
   public void recordListRequest(long durationMs) {
     assetListCounter.increment();
     assetListTimer.record(durationMs, TimeUnit.MILLISECONDS);
   }
 
+  /** 记录详情查询请求 */
   public void recordDetailRequest(long durationMs) {
     assetDetailCounter.increment();
     assetDetailTimer.record(durationMs, TimeUnit.MILLISECONDS);
   }
 
+  /** 记录统计查询请求 */
   public void recordStatsRequest(long durationMs) {
     statsQueryCounter.increment();
     statsQueryTimer.record(durationMs, TimeUnit.MILLISECONDS);
   }
 
+  /** 记录上传请求 */
   public void recordUploadRequest(long durationMs) {
     uploadCounter.increment();
     uploadTimer.record(durationMs, TimeUnit.MILLISECONDS);
   }
 
+  /** 记录删除请求 */
   public void recordDeleteRequest(long durationMs) {
     deleteCounter.increment();
     deleteTimer.record(durationMs, TimeUnit.MILLISECONDS);

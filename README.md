@@ -72,7 +72,61 @@
 | **安全防护** | 限流、认证、注入防护 | Bucket4j + Spring Security |
 | **可观测性** | 监控指标、API 文档 | Micrometer + SpringDoc |
 
+
+## 安全设计
+
+### API 请求处理链
+
+```
+请求 → RateLimitFilter → ApiKeyAuthFilter → Controller → AssetMetrics
+           ↓                   ↓                  ↓
+        429 限流           401 认证         Prometheus 指标
+```
+
+### 详细流程
+
+```
+HTTP Request
+     │
+     ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ RateLimitFilter │────▶│ ApiKeyAuthFilter│────▶│   Controller    │
+│                 │     │                 │     │                 │
+│ Token Bucket    │     │ X-API-Key 验证  │     │   业务处理      │
+│ 10 请求/秒      │     │ 白名单匹配      │     │                 │
+└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+      429 Too Many           401 Unauthorized        200 OK
+      (超限拒绝)              (无Key/无效Key)          (正常响应)
+                                                         │
+                                                         ▼
+                                                  ┌─────────────┐
+                                                  │ AssetMetrics│
+                                                  │             │
+                                                  │ 记录延迟    │
+                                                  │ 请求计数    │
+                                                  └──────┬──────┘
+                                                         │
+                                                         ▼
+                                                  ┌─────────────┐
+                                                  │ Prometheus  │
+                                                  │ /metrics    │
+                                                  └─────────────┘
+```
+
+### 生产级特性
+
+| 特性 | 说明 |
+|------|------|
+| API Key 认证 | 配置化管理，支持 RBAC（ROLE_USER / ROLE_ADMIN） |
+| Bucket4j 限流 | 每秒 10 请求，超出返回 429 |
+| Prometheus 监控 | `/actuator/prometheus` 暴露业务指标 |
+| SQL 注入防护 | 四层纵深防御（白名单 + 参数化 + 硬编码列名） |
+
 ---
+<br>
+<br>
 
 ## 核心技术挑战
 
@@ -85,9 +139,12 @@
 | 审核状态 | 中文 | 英文 | 中英混合 |
 | 标签分隔符 | 分号 `;` | 逗号 `,` | Python list 字符串 |
 
-**本项目解决了不止这3个xls，同时解决了后续可上传10个、100或1000个等更多的xls文件上传，架构上需要做任何升级，不同的数据集字段可以通过数据集配置化映射方案，避免反复开发，满足快速支持业务发展的诉求。 配置参考：[动态数据集适配指南](main/docs/dataset-mapping-guide.md)**
+**本项目解决了不止这3个xls，同时解决了后续可上传10个、100或1000个等更多的xls文件上传，架构上不需要做任何升级，不同的数据集字段可以通过数据集配置化映射方案，避免反复开发，满足快速支持业务发展的诉求。 配置参考：[动态数据集适配指南](main/docs/dataset-mapping-guide.md)**
 
 ---
+
+<br>
+<br>
 
 ## 架构决策摘要（重点）
 
@@ -350,59 +407,7 @@ LIMIT 20;
 **复杂度**：无论翻到多深的页，始终 O(1)。
 
 ---
-
-## 安全架构设计
-
-### API 请求处理链
-
-```
-请求 → RateLimitFilter → ApiKeyAuthFilter → Controller → AssetMetrics
-           ↓                   ↓                  ↓
-        429 限流           401 认证         Prometheus 指标
-```
-
-### 详细流程
-
-```
-HTTP Request
-     │
-     ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ RateLimitFilter │────▶│ ApiKeyAuthFilter│────▶│   Controller    │
-│                 │     │                 │     │                 │
-│ Token Bucket    │     │ X-API-Key 验证  │     │   业务处理      │
-│ 10 请求/秒      │     │ 白名单匹配      │     │                 │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-      429 Too Many           401 Unauthorized        200 OK
-      (超限拒绝)              (无Key/无效Key)          (正常响应)
-                                                         │
-                                                         ▼
-                                                  ┌─────────────┐
-                                                  │ AssetMetrics│
-                                                  │             │
-                                                  │ 记录延迟    │
-                                                  │ 请求计数    │
-                                                  └──────┬──────┘
-                                                         │
-                                                         ▼
-                                                  ┌─────────────┐
-                                                  │ Prometheus  │
-                                                  │ /metrics    │
-                                                  └─────────────┘
-```
-
-### 生产级特性
-
-| 特性 | 说明 |
-|------|------|
-| API Key 认证 | 配置化管理，支持 RBAC（ROLE_USER / ROLE_ADMIN） |
-| Bucket4j 限流 | 每秒 10 请求，超出返回 429 |
-| Prometheus 监控 | `/actuator/prometheus` 暴露业务指标 |
-| SQL 注入防护 | 四层纵深防御（白名单 + 参数化 + 硬编码列名） |
-
----
+ 
 <br>
 <br>
 <br>
@@ -559,12 +564,13 @@ curl -X DELETE -H "X-API-Key: admin-api-key-001" \
 
 | 文档 | 内容 |
 |------|------|
-| [PRD.md](main/docs/PRD.md) | 产品需求 + 验收标准 + 6 个 ADR |
-| [design.md](main/docs/design.md) | 技术架构 + EXPLAIN ANALYZE + 演进路径 |
+| [BRD](main/docs/BRD/后端系统设计作业.txt) | 原始诉求，目标+要求 |
+| [PRD.md](main/docs/PRD.md) | 产品需求，验收标准 |
+| [design.md](main/docs/design.md) | 技术架构， 技术设计文档 + 演进路径 |
 | [schema-design.md](main/docs/schema-design.md) | 数据库表设计，完整 DDL + 索引设计 + 查询计划 |
-| [queries.md](main/docs/queries.md) | Q1/Q2/Q3 SQL + 执行结果 |
+| [queries.md](main/docs/queries.md) | 仪表盘设计，Q1/Q2/Q3 SQL + 执行结果 |
 | [improvements.md](main/docs/improvements.md) | 后续规划： 10 项局限性详解 + 改进路径 |
-| [验收截图.md](main/docs/验收截图.md) | 19/19 验收通过证明 |
+| [验收截图.md](main/docs/验收截图.md) | 截图展示，验收通过证明 |
 
 ---
 

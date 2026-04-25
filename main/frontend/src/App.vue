@@ -8,6 +8,7 @@
         <span>素材管理后台</span>
       </div>
 
+      <!-- 主导航菜单 -->
       <el-menu
         :default-active="activeMenu"
         router
@@ -35,7 +36,7 @@
 
     <!-- 右侧主区域 -->
     <el-container direction="vertical">
-      <!-- 顶栏 -->
+      <!-- 顶栏：面包屑 + 版本信息 -->
       <el-header class="app-header">
         <div class="header-left">
           <el-breadcrumb separator="/">
@@ -50,7 +51,7 @@
         </div>
       </el-header>
 
-      <!-- 主内容区 -->
+      <!-- 主内容区：路由出口 + 页面切换动画 -->
       <el-main class="app-main">
         <router-view v-slot="{ Component }">
           <!-- 路由切换动画 -->
@@ -69,7 +70,11 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 
-// 当前激活菜单项（匹配路由 path）
+/**
+ * 根据当前路由更新侧栏激活菜单项。
+ * 
+ * 特殊处理：详情页时激活素材列表菜单。
+ */
 const activeMenu = computed(() => {
   // 详情页激活素材列表菜单
   if (route.name === 'AssetDetail') return '/assets'

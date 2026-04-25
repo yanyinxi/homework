@@ -1,11 +1,12 @@
 <template>
   <div class="asset-list">
+    <!-- 页面标题 + 总数统计 -->
     <div class="page-title">
       <h2>素材列表</h2>
       <el-text type="info" size="small">共 {{ store.total }} 条记录</el-text>
     </div>
 
-    <!-- 过滤条件栏 -->
+    <!-- 过滤条件栏：支持多字段过滤（status、uploader、file_size、tags 等） -->
     <FilterBar
       v-model="filterState"
       @apply="handleFilterApply"

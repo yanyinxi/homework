@@ -24,9 +24,16 @@ public class Asset {
   /** 原始数据集中的 ID（A0001 / asset_001 / vid0001） */
   private String sourceId;
 
+  /** 数据导入时间 */
   private Instant ingestedAt;
+  
+  /** 素材标题 */
   private String title;
+  
+  /** 上传人名称 */
   private String uploader;
+  
+  /** 素材上传时间 */
   private Instant uploadedAt;
 
   /** 文件大小（字节），所有来源归一到 bytes */
@@ -39,11 +46,22 @@ public class Asset {
   @TableField(typeHandler = PgStringArrayTypeHandler.class)
   private List<String> tags;
 
+  /** 城市 */
   private String city;
+  
+  /** 投放平台 */
   private String platform;
+  
+  /** 审核人 */
   private String reviewer;
+  
+  /** 备注 */
   private String remark;
+  
+  /** 分辨率（如 1080p） */
   private String resolution;
+  
+  /** 时长（秒） */
   private Integer durationSec;
 
   /** 其他稀疏字段（JSONB open schema） */

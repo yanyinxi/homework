@@ -17,6 +17,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 素材查询 API 控制器。
+ * 
+ * 三个端点：
+ * - GET /api/v1/assets - OFFSET 分页（适合小数据集）
+ * - GET /api/v1/assets/cursor - Keyset 分页（适合大数据集和无限滚动）
+ * - GET /api/v1/assets/{id} - 单条详情查询
+ * 
+ * 支持自研 QueryDSL：多字段过滤、排序、稀疏字段投影。
+ */
 @Tag(name = "Assets", description = "视频素材数据查询接口")
 @RestController
 @RequestMapping("/api/v1/assets")

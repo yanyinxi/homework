@@ -6,6 +6,11 @@ import io.swagger.v3.oas.models.info.Info;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * Swagger/OpenAPI 配置。
+ * 
+ * 配置 API 文档信息，访问地址：http://localhost:8080/swagger-ui.html
+ */
 @Configuration
 public class OpenApiConfig {
 

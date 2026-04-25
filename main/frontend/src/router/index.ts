@@ -1,10 +1,11 @@
 /**
- * router/index.ts — Vue Router 4 路由配置
+ * Vue Router 4 路由配置
  *
  * 路由表：
- *   /         → Dashboard（仪表盘，三个 ECharts 图表）
- *   /assets   → AssetList（素材列表，过滤/排序/分页）
- *   /assets/:id → AssetDetail（素材详情）
+ * - /         → Dashboard（仪表盘，展示三条指定查询的 ECharts 图表）
+ * - /assets   → AssetList（素材列表，支持多字段过滤/排序/分页）
+ * - /assets/:id → AssetDetail（素材详情，稀疏字段投影）
+ * - /monitoring → Monitoring（运维监控，Actuator 指标）
  */
 
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'

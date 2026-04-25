@@ -25,6 +25,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 素材写入服务。
+ * 
+ * 职责：
+ * - Excel 文件上传导入
+ * - 单条 / 批量 / 条件删除
+ * - 自动检测数据集格式或指定适配器
+ * - 统计插入和更新计数
+ */
 @Service
 public class AssetCommandService {
 

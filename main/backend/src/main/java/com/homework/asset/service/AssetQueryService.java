@@ -15,6 +15,15 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MultiValueMap;
 
+/**
+ * 素材查询服务。
+ * 
+ * 职责：
+ * - 解析查询 DSL 参数
+ * - 分页查询（OFFSET / Keyset）
+ * - 单条记录查询
+ * - 与 AssetMapper 交互
+ */
 @Service
 public class AssetQueryService {
 

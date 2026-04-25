@@ -18,25 +18,21 @@ import java.util.regex.Pattern;
 import org.springframework.util.MultiValueMap;
 
 /**
- * 查询 DSL 解析器。
- *
- * <p>把 HTTP 查询参数解析为 MyBatis XML 所需的 params Map 和 orderBy 字符串。
- *
- * <p>支持的语法（约 150 行，自研，不依赖 RSQL）：
- *
- * <ul>
- *   <li>{@code field=value} / {@code field[eq]=value} — 等于
- *   <li>{@code field[ne]=value} — 不等于
- *   <li>{@code field[gt]=value} / {@code [gte]} / {@code [lt]} / {@code [lte]} — 范围
- *   <li>{@code field[in]=a,b,c} — IN 枚举
- *   <li>{@code field[like]=x} — ILIKE 模糊匹配
- *   <li>{@code tags[has]=节日} — 数组包含
- *   <li>{@code sort=uploaded_at:desc,file_size_bytes:asc} — 排序
- *   <li>{@code fields=title,status} — 稀疏字段集
- *   <li>{@code page=1&page_size=20} — 分页
- * </ul>
- *
- * <p>安全：字段名走白名单枚举，值全部走 MyBatis #{} 参数化，操作符走白名单枚举。
+ * 查询 DSL 解析器（自研）。
+ * 
+ * 功能：
+ * - 把 HTTP 查询参数转换为 SQL 条件和排序
+ * - 支持多字段过滤、范围查询、数组包含等
+ * - 所有字段和操作符走白名单防 SQL 注入
+ * 
+ * 支持语法：
+ * - 等值：field=value / field[eq]=value
+ * - 范围：field[gt/gte/lt/lte]=value
+ * - 模糊：field[like]=pattern（ILIKE）
+ * - 数组：tags[has]=tag1（PostgreSQL @>）
+ * - 排序：sort=field1:asc,field2:desc
+ * - 稀疏字段：fields=col1,col2
+ * - 分页：page=1&page_size=20
  */
 public class QueryDslParser {
 

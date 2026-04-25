@@ -1,10 +1,15 @@
 /**
- * assetStore.ts — Pinia 全局状态管理
+ * assetStore.ts - Pinia 全局状态管理
  *
- * 管理：
+ * 管理的状态：
  * - 素材列表数据和加载状态
  * - 当前素材详情
- * - 查询状态（过滤/排序/分页/稀疏字段）
+ * - 查询条件（过滤/排序/分页/稀疏字段）
+ * - 上传/删除的加载状态
+ * 
+ * 共享状态范围：
+ * - AssetList.vue 和 AssetDetail.vue 共享列表状态
+ * - Dashboard 不使用此 store（直接调用 API）
  */
 
 import { defineStore } from 'pinia'
@@ -29,18 +34,18 @@ import {
 } from '@/utils/queryBuilder'
 
 export const useAssetStore = defineStore('asset', () => {
-  // ------------------- 素材列表状态 -------------------
+  // ─────────────────── 素材列表状态 ───────────────
 
   /** 当前页的素材列表 */
   const assets = ref<AssetSparse[]>([])
 
-  /** 总记录数（用于分页） */
+  /** 总记录数（用于分页计算） */
   const total = ref(0)
 
   /** 列表加载中标志 */
   const listLoading = ref(false)
 
-  // ------------------- 素材详情状态 -------------------
+  // ─────────────────── 素材详情状态 ───────────────
 
   /** 当前查看的素材详情 */
   const currentAsset = ref<AssetSparse | null>(null)
@@ -54,15 +59,15 @@ export const useAssetStore = defineStore('asset', () => {
   /** 删除加载中标志 */
   const deleteLoading = ref(false)
 
-  // ------------------- 查询状态 -------------------
+  // ─────────────────── 查询状态 ───────────────
 
   const queryState = reactive(createDefaultQueryState())
 
-  // ------------------- 选中的展示字段 -------------------
+  // ─────────────────── 选中的展示字段 ───────────────
 
   /**
-   * 列表页展示的字段列表（空数组 = 返回所有字段）
-   * 初始值包含常用字段
+   * 列表页展示的字段列表
+   * 空数组 = 返回所有字段，否则返回指定字段
    */
   const selectedFields = ref<string[]>([
     'id',
@@ -75,7 +80,7 @@ export const useAssetStore = defineStore('asset', () => {
     'platform',
   ])
 
-  // ------------------- Actions -------------------
+  // ─────────────────── Actions ───────────────
 
   /**
    * 加载素材列表

@@ -95,6 +95,20 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 数据概览页面 (Dashboard)。
+ * 
+ * 展示三条指定查询的统计图表：
+ * - Q1：各上传人平均文件大小（柱状图，Top 10）
+ * - Q2：标签分布（饼图，Top 5）
+ * - Q3：各平台审核通过率（分组柱状图 + 折线）
+ * 
+ * 技术特点：
+ * - 动态加载 ECharts（window.echarts）
+ * - 每个图表独立销毁/重建避免 DOM 失效
+ * - 响应式布局（xs/sm/md 断点）
+ * - 错误处理和加载状态
+ */
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import type { ECharts } from 'echarts'
 import { fetchUploaderAvgSize, fetchTopTags, fetchPlatformApproval, ApiError } from '@/services/assetService'
@@ -107,12 +121,14 @@ declare global {
   }
 }
 
-// Q1 state
+// ─────────────────── Q1：各上传人平均文件大小 ───────────────
+
 const q1ChartRef = ref<HTMLDivElement | null>(null)
 const q1Loading = ref(false)
 const q1Error = ref('')
 let q1Chart: ECharts | null = null
 
+/** 加载并渲染 Q1 查询结果 */
 async function loadQ1() {
   // 刷新时容器会因 v-if 重建，必须销毁旧实例避免绑定到失效 DOM
   if (q1Chart) {
@@ -123,69 +139,50 @@ async function loadQ1() {
   q1Error.value = ''
   try {
     const data: UploaderAvgSize[] = await fetchUploaderAvgSize()
-    console.log('[Q1] Raw data:', data)
     const sorted = [...data].sort((a, b) => {
       const aVal = Number(a.avgSizeBytes ?? 0)
       const bVal = Number(b.avgSizeBytes ?? 0)
       return bVal - aVal
     }).slice(0, 10)
-    console.log('[Q1] Sorted data:', sorted)
     q1Loading.value = false
     await nextTick()
     renderQ1Chart(sorted)
   } catch (error) {
-    console.error('[Q1] Error:', error)
     q1Error.value = error instanceof ApiError ? error.message : '加载失败'
   } finally {
     if (q1Loading.value) q1Loading.value = false
   }
 }
 
+/** 绘制 Q1 柱状图 */
 function renderQ1Chart(data: UploaderAvgSize[]) {
-  console.log('[Q1] renderQ1Chart called with data:', data)
-  
-  // Use querySelector instead of getElementById
   const container = document.querySelector('#q1-chart') as HTMLElement | null
-  console.log('[Q1] container:', container)
+  if (!container) return
+
+  if (!q1Chart) {
+    q1Chart = window.echarts.init(container)
+  }
+
+  const uploaders = data.map((d) => String(d.uploader ?? '未知'))
+  const sizes = data.map((d) => Number(d.avgSizeBytes ?? 0))
   
-  if (!container) {
-    console.log('[Q1] container not found, returning')
-    return
-  }
-
-  try {
-    if (!q1Chart) {
-      console.log('[Q1] Creating new echarts instance')
-      q1Chart = window.echarts.init(container)
-      console.log('[Q1] echarts instance created:', q1Chart)
-    }
-
-    const uploaders = data.map((d) => String(d.uploader ?? '未知'))
-    const sizes = data.map((d) => Number(d.avgSizeBytes ?? 0))
-    
-    console.log('[Q1] Setting option with:', { uploaders, sizes })
-    
-    q1Chart.setOption({
-      title: { text: '各上传人平均文件大小', left: 'center' },
-      tooltip: { trigger: 'axis' },
-      xAxis: { type: 'category', data: uploaders },
-      yAxis: { type: 'value' },
-      series: [{ data: sizes, type: 'bar' }]
-    })
-    
-    console.log('[Q1] setOption called successfully')
-    console.log('[Q1] container now has canvas:', container.querySelector('canvas') !== null)
-  } catch (e) {
-    console.error('[Q1] Error:', e)
-  }
+  q1Chart.setOption({
+    title: { text: '各上传人平均文件大小', left: 'center' },
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: uploaders },
+    yAxis: { type: 'value' },
+    series: [{ data: sizes, type: 'bar' }]
+  })
 }
 
-// Q2 state
+// ─────────────────── Q2：标签 Top 5 ───────────────
+
 const q2ChartRef = ref<HTMLDivElement | null>(null)
 const q2Loading = ref(false)
 const q2Error = ref('')
 let q2Chart: ECharts | null = null
 
+/** 加载并渲染 Q2 查询结果 */
 async function loadQ2() {
   if (q2Chart) {
     q2Chart.dispose()
@@ -195,25 +192,22 @@ async function loadQ2() {
   q2Error.value = ''
   try {
     const data: TopTag[] = await fetchTopTags(5)
-    console.log('[Q2] Raw data:', data)
     q2Loading.value = false
     await nextTick()
     renderQ2Chart(data)
   } catch (error) {
-    console.error('[Q2] Error:', error)
     q2Error.value = error instanceof ApiError ? error.message : '加载失败'
   } finally {
     if (q2Loading.value) q2Loading.value = false
   }
 }
 
+/** 绘制 Q2 饼图 */
 function renderQ2Chart(data: TopTag[]) {
-  console.log('[Q2] renderQ2Chart called with:', data)
   const container = document.querySelector('#q2-chart') as HTMLElement | null
   if (!container) return
 
   if (!q2Chart) {
-    console.log('[Q2] Creating new echarts instance')
     q2Chart = window.echarts.init(container)
   }
 
@@ -255,13 +249,14 @@ function renderQ2Chart(data: TopTag[]) {
   })
 }
 
-// Q3
+// ─────────────────── Q3：各平台审核通过率 ───────────────
 
 const q3ChartRef = ref<HTMLDivElement | null>(null)
 const q3Loading = ref(false)
 const q3Error = ref('')
 let q3Chart: ECharts | null = null
 
+/** 加载并渲染 Q3 查询结果 */
 async function loadQ3() {
   if (q3Chart) {
     q3Chart.dispose()
@@ -271,25 +266,22 @@ async function loadQ3() {
   q3Error.value = ''
   try {
     const data: PlatformApproval[] = await fetchPlatformApproval()
-    console.log('[Q3] Raw data:', data)
     q3Loading.value = false
     await nextTick()
     renderQ3Chart(data)
   } catch (error) {
-    console.error('[Q3] Error:', error)
     q3Error.value = error instanceof ApiError ? error.message : '加载失败'
   } finally {
     if (q3Loading.value) q3Loading.value = false
   }
 }
 
+/** 绘制 Q3 分组柱状图 + 通过率折线 */
 function renderQ3Chart(data: PlatformApproval[]) {
-  console.log('[Q3] renderQ3Chart called with:', data)
   const container = document.querySelector('#q3-chart') as HTMLElement | null
   if (!container) return
 
   if (!q3Chart) {
-    console.log('[Q3] Creating new echarts instance')
     q3Chart = window.echarts.init(container)
   }
 
@@ -367,17 +359,17 @@ function renderQ3Chart(data: PlatformApproval[]) {
   })
 }
 
+/** 响应窗口大小变化，同步调整图表 */
 function handleResize() {
   q1Chart?.resize()
   q2Chart?.resize()
   q3Chart?.resize()
 }
 
+/** 组件挂载时加载所有图表 */
 onMounted(() => {
-  console.log('[onMounted] Waiting for DOM...')
   setTimeout(() => {
     setTimeout(() => {
-      console.log('[onMounted] Double wait done, loading charts...')
       loadQ1()
       loadQ2()
       loadQ3()
@@ -386,6 +378,7 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
 })
 
+/** 组件卸载时销毁图表实例 */
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   q1Chart?.dispose()
