@@ -108,7 +108,7 @@ app:
         name: "Admin"
         roles: "ROLE_ADMIN,ROLE_USER"
   rate-limit:
-    requests-per-second: 10
+    requests-per-second: 100
 
 ---
 # Docker 环境配置覆盖

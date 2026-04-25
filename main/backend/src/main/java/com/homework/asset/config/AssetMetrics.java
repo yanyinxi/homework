@@ -21,6 +21,12 @@ public class AssetMetrics {
   private final Counter deleteCounter;
   private final Timer deleteTimer;
 
+  /**
+   * 构造函数，注册所有 Prometheus 指标。
+   * 为每个 API 端点创建请求计数器和延迟计时器。
+   *
+   * @param registry Micrometer 指标注册表
+   */
   public AssetMetrics(MeterRegistry registry) {
     this.assetListCounter =
         Counter.builder("asset_api_requests_total")

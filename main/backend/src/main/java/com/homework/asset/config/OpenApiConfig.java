@@ -14,6 +14,12 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OpenApiConfig {
 
+  /**
+   * 创建 OpenAPI 配置 Bean。
+   * 配置 API 文档的标题、描述、版本和联系方式。
+   *
+   * @return OpenAPI 实例
+   */
   @Bean
   public OpenAPI assetServiceOpenAPI() {
     return new OpenAPI()

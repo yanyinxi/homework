@@ -45,10 +45,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private final int requestsPerSecond;
   private ScheduledExecutorService cleanupExecutor;
 
+  /**
+   * 构造函数，注入每秒请求数限制配置。
+   *
+   * @param requestsPerSecond 每秒允许的最大请求数，默认 10
+   */
   public RateLimitFilter(@Value("${app.rate-limit.requests-per-second:10}") int requestsPerSecond) {
     this.requestsPerSecond = requestsPerSecond;
   }
 
+  /**
+   * 初始化定时清理任务。
+   * 每 5 分钟清理过期的 Bucket，防止内存泄漏。
+   */
   @PostConstruct
   public void init() {
     cleanupExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -60,6 +69,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         this::cleanupExpiredBuckets, 5, 5, TimeUnit.MINUTES);
   }
 
+  /**
+   * 销毁定时任务线程池。
+   */
   @PreDestroy
   public void destroy() {
     if (cleanupExecutor != null) {
@@ -67,6 +79,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
   }
 
+  /**
+   * 核心限流过滤逻辑。
+   * 根据 API Key 或 IP 获取对应的令牌桶，尝试消费一个令牌。
+   * 成功则放行请求，失败则返回 429 状态码。
+   *
+   * @param request HTTP 请求对象
+   * @param response HTTP 响应对象
+   * @param filterChain 过滤器链
+   * @throws ServletException Servlet 异常
+   * @throws IOException IO 异常
+   */
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -85,6 +108,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
   }
 
+  /**
+   * 清理过期的令牌桶。
+   * 移除超过 30 分钟未访问的 Bucket，释放内存。
+   */
   private void cleanupExpiredBuckets() {
     long now = System.currentTimeMillis();
     long expiryMillis = TimeUnit.MINUTES.toMillis(BUCKET_EXPIRY_MINUTES);
@@ -98,6 +125,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
   }
 
+  /**
+   * 解析限流 Key。
+   * 优先使用 API Key，未认证请求使用客户端 IP。
+   *
+   * @param request HTTP 请求对象
+   * @return 限流 Key，格式为 "apikey:xxx" 或 "ip:xxx"
+   */
   private String resolveKey(HttpServletRequest request) {
     String apiKey = request.getHeader(API_KEY_HEADER);
     if (apiKey != null && !apiKey.isBlank()) {
@@ -106,6 +140,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     return "ip:" + getClientIp(request);
   }
 
+  /**
+   * 获取客户端真实 IP。
+   * 依次检查 X-Forwarded-For、X-Real-IP、RemoteAddr。
+   *
+   * @param request HTTP 请求对象
+   * @return 客户端 IP 地址
+   */
   private String getClientIp(HttpServletRequest request) {
     String xForwardedFor = request.getHeader("X-Forwarded-For");
     if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
@@ -118,6 +159,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     return request.getRemoteAddr();
   }
 
+  /**
+   * 创建令牌桶。
+   * 使用经典令牌桶算法，每秒补充指定数量的令牌。
+   *
+   * @return Bucket 实例
+   */
   private Bucket createBucket() {
     Bandwidth limit =
         Bandwidth.classic(
@@ -125,29 +172,52 @@ public class RateLimitFilter extends OncePerRequestFilter {
     return Bucket.builder().addLimit(limit).build();
   }
 
+  /**
+   * 发送 429 Too Many Requests 响应。
+   *
+   * @param response HTTP 响应对象
+   * @throws IOException IO 异常
+   */
   private void sendTooManyRequests(HttpServletResponse response) throws IOException {
     response.setStatus(429);
     response.setContentType("application/json;charset=UTF-8");
     response.getWriter().write("{\"code\":429,\"message\":\"Rate limit exceeded. Try again later.\"}");
   }
 
+  /** 令牌桶包装类，包含 Bucket 实例和最后访问时间。 */
   private static final class BucketWithTimestamp {
     private final Bucket bucket;
     private volatile long lastAccessTime;
 
+    /**
+     * 构造函数。
+     *
+     * @param bucket 令牌桶实例
+     */
     BucketWithTimestamp(Bucket bucket) {
       this.bucket = bucket;
       this.lastAccessTime = System.currentTimeMillis();
     }
 
+    /**
+     * 获取令牌桶实例。
+     *
+     * @return Bucket 实例
+     */
     Bucket getBucket() {
       return bucket;
     }
 
+    /**
+     * 获取最后访问时间。
+     *
+     * @return 最后访问时间戳（毫秒）
+     */
     long getLastAccessTime() {
       return lastAccessTime;
     }
 
+    /** 更新最后访问时间为当前时间。 */
     void touch() {
       this.lastAccessTime = System.currentTimeMillis();
     }

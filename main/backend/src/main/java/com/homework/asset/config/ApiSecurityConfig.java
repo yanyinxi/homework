@@ -33,11 +33,26 @@ public class ApiSecurityConfig {
   @Value("${app.cors.allowed-origins:http://localhost,http://127.0.0.1}")
   private String[] allowedOrigins;
 
+  /**
+   * 构造函数，注入认证过滤器和限流过滤器。
+   *
+   * @param apiKeyAuthFilter API Key 认证过滤器
+   * @param rateLimitFilter 限流过滤器
+   */
   public ApiSecurityConfig(ApiKeyAuthFilter apiKeyAuthFilter, RateLimitFilter rateLimitFilter) {
     this.apiKeyAuthFilter = apiKeyAuthFilter;
     this.rateLimitFilter = rateLimitFilter;
   }
 
+  /**
+   * 创建安全过滤器链。
+   * 配置 CORS、CSRF、Session 策略，定义公开路径和认证路径，
+   * 并将限流过滤器和认证过滤器加入过滤器链。
+   *
+   * @param http HttpSecurity 配置对象
+   * @return SecurityFilterChain 实例
+   * @throws Exception 配置异常
+   */
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     http
@@ -63,6 +78,12 @@ public class ApiSecurityConfig {
     return http.build();
   }
 
+  /**
+   * 创建 CORS 配置源。
+   * 允许配置的源访问 API，支持 GET、POST、DELETE 方法。
+   *
+   * @return CorsConfigurationSource 实例
+   */
   @Bean
   public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration configuration = new CorsConfiguration();

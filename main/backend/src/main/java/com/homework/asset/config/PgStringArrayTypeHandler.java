@@ -22,6 +22,16 @@ import org.apache.ibatis.type.MappedTypes;
 @MappedTypes(List.class)
 public class PgStringArrayTypeHandler extends BaseTypeHandler<List<String>> {
 
+  /**
+   * 设置非空参数。
+   * 将 Java List&lt;String&gt; 转换为 PostgreSQL text[] 数组。
+   *
+   * @param ps PreparedStatement
+   * @param i 参数索引
+   * @param parameter List&lt;String&gt; 参数
+   * @param jdbcType JDBC 类型
+   * @throws SQLException SQL 异常
+   */
   @Override
   public void setNonNullParameter(
       PreparedStatement ps, int i, List<String> parameter, JdbcType jdbcType) throws SQLException {
@@ -29,21 +39,52 @@ public class PgStringArrayTypeHandler extends BaseTypeHandler<List<String>> {
     ps.setArray(i, array);
   }
 
+  /**
+   * 从结果集获取数组（按列名）。
+   *
+   * @param rs ResultSet
+   * @param columnName 列名
+   * @return List&lt;String&gt; 结果
+   * @throws SQLException SQL 异常
+   */
   @Override
   public List<String> getNullableResult(ResultSet rs, String columnName) throws SQLException {
     return toList(rs.getArray(columnName));
   }
 
+  /**
+   * 从结果集获取数组（按列索引）。
+   *
+   * @param rs ResultSet
+   * @param columnIndex 列索引
+   * @return List&lt;String&gt; 结果
+   * @throws SQLException SQL 异常
+   */
   @Override
   public List<String> getNullableResult(ResultSet rs, int columnIndex) throws SQLException {
     return toList(rs.getArray(columnIndex));
   }
 
+  /**
+   * 从存储过程获取数组。
+   *
+   * @param cs CallableStatement
+   * @param columnIndex 参数索引
+   * @return List&lt;String&gt; 结果
+   * @throws SQLException SQL 异常
+   */
   @Override
   public List<String> getNullableResult(CallableStatement cs, int columnIndex) throws SQLException {
     return toList(cs.getArray(columnIndex));
   }
 
+  /**
+   * 将 JDBC Array 转换为 List&lt;String&gt;。
+   *
+   * @param array JDBC Array 对象
+   * @return List&lt;String&gt; 结果，null 或空数组返回空列表
+   * @throws SQLException SQL 异常
+   */
   private List<String> toList(Array array) throws SQLException {
     if (array == null) return Collections.emptyList();
     Object[] arr = (Object[]) array.getArray();

@@ -45,6 +45,11 @@ public class SlowQueryInterceptor implements Interceptor {
   private final Counter slowQueryCounter;
   private final Timer queryTimer;
 
+  /**
+   * 构造函数，注册 Prometheus 指标。
+   *
+   * @param meterRegistry Micrometer 指标注册表
+   */
   public SlowQueryInterceptor(MeterRegistry meterRegistry) {
     this.slowQueryCounter = Counter.builder("db.slow.queries")
         .description("Number of slow database queries")
@@ -56,6 +61,14 @@ public class SlowQueryInterceptor implements Interceptor {
         .register(meterRegistry);
   }
 
+  /**
+   * 拦截 SQL 执行，记录执行时间。
+   * 超过 500ms 的查询标记为慢查询，打印 WARN 日志并记录指标。
+   *
+   * @param invocation MyBatis 调用上下文
+   * @return SQL 执行结果
+   * @throws Throwable 执行异常
+   */
   @Override
   public Object intercept(Invocation invocation) throws Throwable {
     long startTime = System.currentTimeMillis();
@@ -94,11 +107,22 @@ public class SlowQueryInterceptor implements Interceptor {
     return result;
   }
 
+  /**
+   * 包装目标对象，创建代理。
+   *
+   * @param target 目标对象
+   * @return 代理对象
+   */
   @Override
   public Object plugin(Object target) {
     return Plugin.wrap(target, this);
   }
 
+  /**
+   * 设置插件属性（当前未使用）。
+   *
+   * @param properties 属性配置
+   */
   @Override
   public void setProperties(Properties properties) {}
 }
