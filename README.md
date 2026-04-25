@@ -586,3 +586,301 @@ curl -X DELETE -H "X-API-Key: admin-api-key-001" \
 ---
 
 > **这个项目展示了从访问模式分析到生产级实现的完整链路，每个决策都有明确依据，每个实现都有边界意识。这不是"把功能做完"，而是"把问题解决到位"。
+
+---
+
+## 项目代码结构
+
+### 整体目录结构
+
+```
+homework/
+├── start-local.sh              # macOS/Linux 一键启动脚本
+├── start-docker.sh             # Docker 启动脚本
+├── start-local-window.ps1      # Windows PowerShell 启动脚本
+├── docker-compose.yml          # Docker Compose 编排配置
+├── README.md                   # 项目说明文档
+│
+├── main/                       # 主项目目录
+│   ├── backend/               # 后端服务（Spring Boot）
+│   │   ├── pom.xml            # Maven 依赖配置
+│   │   ├── benchmark.sh       # 性能基准测试脚本
+│   │   └── src/
+│   │       ├── main/
+│   │       │   ├── java/com/homework/asset/
+│   │       │   │   ├── AssetApplication.java        # Spring Boot 启动类
+│   │       │   │   │
+│   │       │   │   ├── api/                         # API 层（控制器）
+│   │       │   │   │   ├── AssetController.java     # 查询 API（只读）
+│   │       │   │   │   ├── AssetCommandController.java # 写入 API（需认证）
+│   │       │   │   │   ├── StatsController.java     # 统计 API（Q1/Q2/Q3）
+│   │       │   │   │   ├── dto/                     # 数据传输对象
+│   │       │   │   │   │   ├── ApiEnvelope.java     # 统一响应封装
+│   │       │   │   │   │   ├── CursorPage.java      # Cursor 分页响应
+│   │       │   │   │   │   ├── PagedResponse.java   # 普通分页响应
+│   │       │   │   │   │   ├── UploadResult.java    # 上传结果
+│   │       │   │   │   │   ├── DeleteResult.java    # 删除结果
+│   │       │   │   │   │   └── DeleteBatchRequest.java # 批量删除请求
+│   │       │   │   │   ├── query/                   # 查询 DSL 解析
+│   │       │   │   │   │   ├── QueryDslParser.java  # DSL 解析器（核心）
+│   │       │   │   │   │   ├── FilterableField.java # 可过滤字段枚举（白名单）
+│   │       │   │   │   │   ├── FilterOperator.java  # 过滤操作符枚举
+│   │       │   │   │   │   ├── SortableField.java   # 可排序字段枚举
+│   │       │   │   │   │   └── SortClause.java      # 排序子句
+│   │       │   │   │   └── exception/               # 异常处理
+│   │       │   │   │       ├── ApiException.java    # 业务异常
+│   │       │   │   │       └── GlobalExceptionHandler.java # 全局异常处理器
+│   │       │   │   │
+│   │       │   │   ├── config/                      # 配置层
+│   │       │   │   │   ├── ApiSecurityConfig.java   # Spring Security 配置
+│   │       │   │   │   ├── ApiKeyAuthFilter.java    # API Key 认证过滤器
+│   │       │   │   │   ├── ApiKeyProperties.java    # API Key 配置属性
+│   │       │   │   │   ├── RateLimitFilter.java     # Bucket4j 限流过滤器
+│   │       │   │   │   ├── AssetMetrics.java        # Prometheus 业务指标
+│   │       │   │   │   ├── SlowQueryInterceptor.java # 慢查询拦截器
+│   │       │   │   │   ├── OpenApiConfig.java       # Swagger/OpenAPI 配置
+│   │       │   │   │   ├── MyBatisPlusConfig.java   # MyBatis-Plus 配置
+│   │       │   │   │   └── PgStringArrayTypeHandler.java # PostgreSQL text[] 处理器
+│   │       │   │   │
+│   │       │   │   ├── domain/                      # 领域模型
+│   │       │   │   │   └── entity/
+│   │       │   │   │       └── Asset.java           # 素材实体（对应 assets 表）
+│   │       │   │   │
+│   │       │   │   ├── mapper/                      # 数据访问层
+│   │       │   │   │   └── AssetMapper.java         # MyBatis Mapper 接口
+│   │       │   │   │
+│   │       │   │   ├── service/                     # 业务逻辑层
+│   │       │   │   │   ├── AssetQueryService.java   # 查询服务（DSL → SQL）
+│   │       │   │   │   ├── AssetCommandService.java # 写入服务（上传/删除）
+│   │       │   │   │   └── AssetStatsService.java   # 统计服务（Q1/Q2/Q3）
+│   │       │   │   │
+│   │       │   │   └── ingest/                      # ETL 导入模块
+│   │       │   │       ├── IngestRunner.java        # 导入入口
+│   │       │   │       ├── IngestBatchService.java  # 批量导入服务
+│   │       │   │       ├── IngestAuditService.java  # 导入审计服务
+│   │       │   │       ├── excel/
+│   │       │   │       │   └── ExcelReader.java     # Excel 读取器（Apache POI）
+│   │       │   │       ├── adapter/                 # 数据集适配器（策略模式）
+│   │       │   │       │   ├── DatasetAdapter.java  # 适配器接口
+│   │       │   │       │   ├── Dataset1Adapter.java # 数据集1 适配器（中文列名）
+│   │       │   │       │   ├── Dataset2Adapter.java # 数据集2 适配器（英文列名）
+│   │       │   │       │   └── Dataset3Adapter.java # 数据集3 适配器（含 platform）
+│   │       │   │       ├── mapping/                 # 动态数据集映射
+│   │       │   │       │   ├── DatasetMappingConfig.java    # 映射配置
+│   │       │   │       │   ├── DatasetMappingLoader.java    # 配置加载器
+│   │       │   │       │   └── DynamicDatasetAdapter.java   # 动态适配器
+│   │       │   │       └── normalizer/              # 数据归一化器
+│   │       │   │           ├── EtlNormalizers.java  # 归一化工具类
+│   │       │   │           └── EtlNormalizeException.java
+│   │       │   │
+│   │       │   └── resources/
+│   │       │       ├── application.yml              # 应用配置
+│   │       │       ├── application-dev.yml          # 开发环境配置
+│   │       │       ├── application-prod.yml         # 生产环境配置
+│   │       │       ├── db/migration/                # Flyway 数据库迁移
+│   │       │       │   ├── V1__init_assets.sql      # 初始化表结构
+│   │       │       │   └── V2__add_ingest_observability.sql # 导入可观测性
+│   │       │       ├── mapper/
+│   │       │       │   └── AssetMapper.xml          # MyBatis XML（动态 SQL）
+│   │       │       └── dataset-mappings/            # 动态数据集映射配置
+│   │       │
+│   │       └── test/java/com/homework/asset/        # 测试代码
+│   │           ├── api/QueryDslParserTest.java      # DSL 解析器测试
+│   │           ├── config/                          # 配置测试
+│   │           │   ├── ApiKeyAuthFilterTest.java
+│   │           │   └── RateLimitFilterTest.java
+│   │           ├── ingest/                          # ETL 测试
+│   │           │   ├── EtlNormalizersTest.java      # 归一化器测试
+│   │           │   ├── adapter/                     # 适配器测试
+│   │           │   │   ├── Dataset1AdapterTest.java
+│   │           │   │   ├── Dataset2AdapterTest.java
+│   │           │   │   └── Dataset3AdapterTest.java
+│   │           │   └── mapping/                     # 动态映射测试
+│   │           │       ├── DatasetMappingLoaderTest.java
+│   │           │       └── DynamicDatasetAdapterTest.java
+│   │           ├── service/                         # 服务测试
+│   │           │   ├── AssetQueryServiceTest.java
+│   │           │   └── AssetStatsServiceTest.java
+│   │           └── it/AssetControllerIT.java        # 集成测试（Testcontainers）
+│   │
+│   ├── frontend/                                    # 前端服务（Vue 3）
+│   │   ├── package.json                             # npm 依赖配置
+│   │   ├── vite.config.ts                           # Vite 构建配置
+│   │   ├── tsconfig.json                            # TypeScript 配置
+│   │   ├── playwright.config.ts                     # E2E 测试配置
+│   │   ├── nginx.conf                               # Nginx 反向代理配置
+│   │   └── src/
+│   │       ├── main.ts                              # Vue 应用入口
+│   │       ├── App.vue                              # 根组件
+│   │       ├── vite-env.d.ts                        # Vite 类型声明
+│   │       │
+│   │       ├── router/
+│   │       │   └── index.ts                         # Vue Router 路由配置
+│   │       │
+│   │       ├── stores/
+│   │       │   └── assetStore.ts                    # Pinia 状态管理
+│   │       │
+│   │       ├── types/
+│   │       │   └── asset.ts                         # TypeScript 类型定义
+│   │       │
+│   │       ├── pages/                               # 页面组件
+│   │       │   ├── Dashboard.vue                    # 数据概览页（统计图表）
+│   │       │   ├── AssetList.vue                    # 素材列表页（筛选/排序/分页）
+│   │       │   ├── AssetDetail.vue                  # 素材详情页
+│   │       │   └── Monitoring.vue                   # 运维监控页（Actuator/Prometheus）
+│   │       │
+│   │       ├── components/                          # 公共组件
+│   │       │   ├── FilterBar.vue                    # 筛选条件栏
+│   │       │   ├── SortControl.vue                  # 排序控制组件
+│   │       │   └── FieldSelector.vue                # 字段选择器
+│   │       │
+│   │       ├── services/                            # API 服务层
+│   │       │   ├── assetService.ts                  # 素材 API 封装
+│   │       │   └── monitoringService.ts             # Prometheus 指标解析服务
+│   │       │
+│   │       └── utils/                               # 工具函数
+│   │           ├── queryBuilder.ts                  # 查询参数构建器
+│   │           └── formatters.ts                    # 数据格式化工具
+│   │
+│   └── docs/                                        # 文档目录
+│       ├── BRD/                                     # 业务需求文档
+│       │   └── 后端系统设计作业.txt                  # 原始作业需求
+│       ├── PRD.md                                   # 产品需求文档
+│       ├── design.md                                # 技术设计文档
+│       ├── schema-design.md                         # 数据库设计文档
+│       ├── queries.md                               # 查询设计文档
+│       ├── improvements.md                          # 改进规划文档
+│       ├── dataset-mapping-guide.md                 # 动态数据集适配指南
+│       ├── 验收报告.md                               # 验收报告
+│       ├── 验收截图.md                               # 验收截图文档
+│       └── 验收截图/                                 # 验收截图目录
+│
+└── .claude/                                         # Claude Code 配置（开发辅助）
+    ├── agents/                                      # 自定义代理配置
+    ├── skills/                                      # 技能定义
+    ├── rules/                                       # 规则配置
+    └── hooks/                                       # 钩子脚本
+```
+
+---
+
+### 后端模块详解
+
+#### 1. API 层 (`api/`)
+
+| 文件 | 职责 | 关键特性 |
+|------|------|----------|
+| `AssetController.java` | 只读查询 API | 多字段筛选、Cursor 分页、动态字段选择 |
+| `AssetCommandController.java` | 写入 API | Excel 上传、批量删除、条件删除 |
+| `StatsController.java` | 统计 API | Q1/Q2/Q3 聚合查询 |
+| `query/QueryDslParser.java` | DSL 解析 | 四层防注入设计 |
+| `query/FilterableField.java` | 字段白名单 | 防止 SQL 注入第一道防线 |
+| `dto/ApiEnvelope.java` | 响应封装 | 统一 `{code, message, data}` 格式 |
+
+#### 2. 配置层 (`config/`)
+
+| 文件 | 职责 | 关键特性 |
+|------|------|----------|
+| `ApiSecurityConfig.java` | 安全配置 | 白名单路径、RBAC 权限 |
+| `ApiKeyAuthFilter.java` | API Key 认证 | X-API-Key Header 验证 |
+| `RateLimitFilter.java` | 限流 | Bucket4j 令牌桶，10 req/s |
+| `AssetMetrics.java` | 业务指标 | API 请求计数、延迟统计、慢查询计数 |
+| `SlowQueryInterceptor.java` | 慢查询监控 | MyBatis 拦截器，阈值 500ms |
+| `PgStringArrayTypeHandler.java` | 类型处理 | PostgreSQL text[] 与 Java List<String> 转换 |
+
+#### 3. 业务逻辑层 (`service/`)
+
+| 文件 | 职责 | 关键特性 |
+|------|------|----------|
+| `AssetQueryService.java` | 查询服务 | DSL → 动态 SQL、Cursor 分页 |
+| `AssetCommandService.java` | 写入服务 | 幂等导入、批量删除、条件删除 |
+| `AssetStatsService.java` | 统计服务 | Q1/Q2/Q3 聚合、NULLIF 防除零 |
+
+#### 4. ETL 模块 (`ingest/`)
+
+| 目录/文件 | 职责 | 关键特性 |
+|-----------|------|----------|
+| `IngestRunner.java` | 导入入口 | 数据集自动识别、适配器选择 |
+| `IngestBatchService.java` | 批量导入 | UPSERT 语义、行级校验 |
+| `adapter/` | 数据集适配器 | 策略模式，支持扩展 |
+| `normalizer/EtlNormalizers.java` | 数据归一化 | 5 个纯函数、独立单元测试 |
+| `mapping/` | 动态映射 | YAML 配置驱动、无需改代码 |
+
+---
+
+### 前端模块详解
+
+#### 1. 页面组件 (`pages/`)
+
+| 文件 | 职责 | 关键特性 |
+|------|------|----------|
+| `Dashboard.vue` | 数据概览 | ECharts 图表、Q1/Q2/Q3 可视化 |
+| `AssetList.vue` | 素材列表 | 多字段筛选、排序、分页、拖拽上传 |
+| `AssetDetail.vue` | 素材详情 | 完整信息展示、关联数据 |
+| `Monitoring.vue` | 运维监控 | Actuator 集成、Prometheus 指标、告警系统 |
+
+#### 2. 服务层 (`services/`)
+
+| 文件 | 职责 | 关键特性 |
+|------|------|----------|
+| `assetService.ts` | 素材 API | 列表查询、详情获取、上传、删除 |
+| `monitoringService.ts` | 监控服务 | Prometheus 指标解析、业务指标计算 |
+
+#### 3. 组件库 (`components/`)
+
+| 文件 | 职责 | 关键特性 |
+|------|------|----------|
+| `FilterBar.vue` | 筛选栏 | 动态筛选条件、状态管理 |
+| `SortControl.vue` | 排序控制 | 多字段排序、升降序切换 |
+| `FieldSelector.vue` | 字段选择 | 动态列显示、拖拽排序 |
+
+---
+
+### 数据库设计
+
+#### 表结构 (`assets`)
+
+```sql
+CREATE TABLE assets (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title           TEXT NOT NULL,
+    uploader        TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    tags            TEXT[],
+    file_size_bytes BIGINT,
+    duration_seconds INTEGER,
+    uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_dataset  TEXT NOT NULL,
+    source_id       TEXT NOT NULL,
+    extra_fields    JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(source_dataset, source_id)
+);
+```
+
+#### 索引设计
+
+| 索引名 | 字段 | 用途 |
+|--------|------|------|
+| `idx_assets_status` | `status` | 状态筛选 |
+| `idx_assets_uploader` | `uploader` | 上传人筛选 |
+| `idx_assets_uploaded_at` | `uploaded_at DESC` | 时间排序 |
+| `idx_assets_source` | `(source_dataset, source_id)` | 幂等导入 |
+| `idx_assets_tags` | `tags` GIN | 标签包含查询 |
+| `idx_assets_title` | `title` | 标题模糊查询 |
+
+---
+
+### 关键技术点
+
+| 技术点 | 实现位置 | 说明 |
+|--------|----------|------|
+| **四层防注入** | `QueryDslParser.java` + `FilterableField.java` + `AssetMapper.xml` | 白名单 + 参数化 + 硬编码列名 |
+| **Cursor 分页** | `AssetMapper.xml` | Keyset Pagination，O(1) 复杂度 |
+| **幂等导入** | `IngestBatchService.java` | ON CONFLICT DO UPDATE |
+| **限流** | `RateLimitFilter.java` | Bucket4j 令牌桶算法 |
+| **慢查询监控** | `SlowQueryInterceptor.java` | MyBatis 拦截器 |
+| **Prometheus 指标** | `AssetMetrics.java` | Micrometer 计数器/计时器 |
+| **PostgreSQL text[]** | `PgStringArrayTypeHandler.java` | JDBC Array 类型转换 |
+| **动态数据集** | `mapping/` | YAML 配置驱动适配器 |
