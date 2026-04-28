@@ -1,7 +1,7 @@
 <template>
   <!-- 过滤条件栏组件 -->
   <el-card class="filter-bar" shadow="never">
-    <el-form :model="localFilters" inline label-position="top" size="small">
+    <el-form ref="formRef" :model="localFilters" :rules="filterRules" inline label-position="top" size="small">
       <!-- 审核状态 -->
       <el-form-item label="审核状态">
         <el-select
@@ -17,7 +17,7 @@
       </el-form-item>
 
       <!-- 上传人模糊搜索 -->
-      <el-form-item label="上传人">
+      <el-form-item label="上传人" prop="uploader">
         <el-input
           v-model="localFilters.uploader"
           placeholder="模糊搜索"
@@ -52,21 +52,25 @@
       <!-- 文件大小范围 -->
       <el-form-item label="文件大小（字节）">
         <div class="size-range">
-          <el-input-number
-            v-model="localFilters.fileSizeMin"
-            :min="0"
-            placeholder="最小"
-            controls-position="right"
-            style="width: 130px"
-          />
+          <el-form-item prop="fileSizeMin" class="size-field-item">
+            <el-input-number
+              v-model="localFilters.fileSizeMin"
+              :min="0"
+              placeholder="最小"
+              controls-position="right"
+              style="width: 130px"
+            />
+          </el-form-item>
           <span class="range-sep">~</span>
-          <el-input-number
-            v-model="localFilters.fileSizeMax"
-            :min="0"
-            placeholder="最大"
-            controls-position="right"
-            style="width: 130px"
-          />
+          <el-form-item prop="fileSizeMax" class="size-field-item">
+            <el-input-number
+              v-model="localFilters.fileSizeMax"
+              :min="0"
+              placeholder="最大"
+              controls-position="right"
+              style="width: 130px"
+            />
+          </el-form-item>
         </div>
       </el-form-item>
 
@@ -88,8 +92,9 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import type { FilterState } from '@/types/asset'
+import type { FormInstance, FormRules } from 'element-plus'
 
 const props = defineProps<{
   modelValue: FilterState
@@ -104,6 +109,34 @@ const emit = defineEmits<{
 // 本地副本，避免直接修改 props
 const localFilters = reactive<FilterState>({ ...props.modelValue })
 
+// 表单引用和验证规则
+const formRef = ref<FormInstance>()
+
+const validatePositiveNumber = (_rule: unknown, value: unknown, callback: (error?: Error) => void) => {
+  if (value === undefined || value === null || value === '') return callback()
+  if (typeof value === 'number' && value >= 0) return callback()
+  callback(new Error('请输入大于等于 0 的数字'))
+}
+
+const validateFileSizeRange = (_rule: unknown, value: unknown, callback: (error?: Error) => void) => {
+  if (value === undefined || value === null || value === '') return callback()
+  const min = localFilters.fileSizeMin
+  if (min !== null && min !== undefined && (value as number) < min) {
+    return callback(new Error(`最大值不能小于最小值 ${min}`))
+  }
+  callback()
+}
+
+const filterRules: FormRules = {
+  fileSizeMin: [{ validator: validatePositiveNumber, trigger: 'blur' }],
+  fileSizeMax: [
+    { validator: validatePositiveNumber, trigger: 'blur' },
+    { validator: validateFileSizeRange, trigger: 'blur' },
+  ],
+  uploader: [{ max: 100, message: '上传人不能超过 100 个字符', trigger: 'blur' }],
+  title: [{ max: 200, message: '标题不能超过 200 个字符', trigger: 'blur' }],
+}
+
 // 当外部 modelValue 变化时同步本地状态
 watch(
   () => props.modelValue,
@@ -113,7 +146,14 @@ watch(
   { deep: true },
 )
 
-function handleApply() {
+async function handleApply() {
+  if (!formRef.value) return
+  try {
+    await formRef.value.validate()
+  } catch {
+    // 验证失败，不触发查询
+    return
+  }
   emit('update:modelValue', { ...localFilters })
   emit('apply', { ...localFilters })
 }
@@ -159,5 +199,13 @@ function handleReset() {
 .filter-actions {
   display: flex;
   gap: 8px;
+}
+
+.size-field-item {
+  margin-bottom: 0;
+}
+
+.size-field-item :deep(.el-form-item__label) {
+  display: none;
 }
 </style>

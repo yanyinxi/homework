@@ -1,9 +1,12 @@
 package com.homework.asset.config;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.List;
 
+import org.springframework.core.Ordered;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -18,14 +21,14 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * API Key 认证过滤器。
- * 
+ *
  * 功能：
  * - 通过 Header X-API-Key 进行认证
  * - 公开路径（Actuator、Swagger）无需认证
  * - 支持 ROLE_USER 和 ROLE_ADMIN 角色
  */
 @Component
-public class ApiKeyAuthFilter extends OncePerRequestFilter {
+public class ApiKeyAuthFilter extends OncePerRequestFilter implements Ordered {
 
   /** API Key Header 名称 */
   private static final String API_KEY_HEADER = "X-API-Key";
@@ -35,7 +38,15 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
       "/actuator/health", "/actuator/info", "/actuator/prometheus", "/actuator/metrics",
       "/swagger-ui", "/api-docs", "/swagger-ui.html", "/v3/api-docs", "/webjars"
   };
+
+  private static final String UNAUTHORIZED_JSON = "{\"code\":401,\"message\":\"%s\"}";
+
   private final ApiKeyProperties properties;
+
+  /**
+   * 预计算的 API Key 字节数组缓存，避免每次请求重复编码。
+   */
+  private volatile byte[][] keyBytesCache;
 
   /**
    * 构造函数，注入 API Key 配置属性。
@@ -44,6 +55,30 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
    */
   public ApiKeyAuthFilter(ApiKeyProperties properties) {
     this.properties = properties;
+  }
+
+  /**
+   * 实现 Ordered 接口，使 Spring Security 能获取 Filter 的执行顺序。
+   * 注：Spring Security 6.x 要求自定义 Filter 必须实现 Ordered 接口，
+   * 才能在 addFilterBefore() 中正确识别顺序。
+   *
+   * @return 优先级数值，值越小越先执行。HIGHEST_PRECEDENCE + 100 表示在最高优先级之后第100位
+   */
+  @Override
+  public int getOrder() {
+    return Ordered.HIGHEST_PRECEDENCE + 100;
+  }
+
+  /**
+   * 初始化 Key 字节数组缓存。
+   */
+  private void initKeyCache() {
+    if (keyBytesCache == null) {
+      List<ApiKeyProperties.ApiKeyEntry> apiKeys = properties.getApiKeys();
+      keyBytesCache = apiKeys.stream()
+          .map(e -> e.getKey().getBytes(StandardCharsets.UTF_8))
+          .toArray(byte[][]::new);
+    }
   }
 
   /**
@@ -57,7 +92,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
   protected boolean shouldNotFilter(HttpServletRequest request) {
     String path = request.getRequestURI();
     for (String publicPath : PUBLIC_PATHS) {
-      if (path.startsWith(publicPath)) {
+      if (path.equals(publicPath) || path.startsWith(publicPath + "/")) {
         return true;
       }
     }
@@ -85,6 +120,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
       return;
     }
 
+    initKeyCache();
+
     String apiKey = request.getHeader(API_KEY_HEADER);
 
     if (apiKey == null || apiKey.isBlank()) {
@@ -106,15 +143,21 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
   /**
    * 在配置的 API Key 列表中查找匹配的条目。
+   * 使用预计算的缓存字节数组进行比对，避免重复编码。
    *
    * @param key 待验证的 API Key 字符串
    * @return 匹配的 ApiKeyEntry，未找到则返回 null
    */
   private ApiKeyProperties.ApiKeyEntry findApiKey(String key) {
-    return properties.getApiKeys().stream()
-        .filter(e -> e.getKey().equals(key))
-        .findFirst()
-        .orElse(null);
+    byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+    List<ApiKeyProperties.ApiKeyEntry> apiKeys = properties.getApiKeys();
+
+    for (int i = 0; i < keyBytesCache.length; i++) {
+      if (MessageDigest.isEqual(keyBytes, keyBytesCache[i])) {
+        return apiKeys.get(i);
+      }
+    }
+    return null;
   }
 
   /**
@@ -144,6 +187,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
   private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {
     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     response.setContentType("application/json;charset=UTF-8");
-    response.getWriter().write("{\"code\":401,\"message\":\"" + message + "\"}");
+    String escapedMessage = message.replace("\\", "\\\\").replace("\"", "\\\"");
+    response.getWriter().write(String.format(UNAUTHORIZED_JSON, escapedMessage));
   }
 }

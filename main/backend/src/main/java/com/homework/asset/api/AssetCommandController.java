@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.homework.asset.api.dto.ApiEnvelope;
 import com.homework.asset.api.dto.DeleteBatchRequest;
+import com.homework.asset.api.exception.ApiException;
 import com.homework.asset.api.dto.DeleteResult;
 import com.homework.asset.api.dto.UploadResult;
 import com.homework.asset.config.AssetMetrics;
@@ -68,16 +69,16 @@ public class AssetCommandController {
     long start = System.currentTimeMillis();
 
     if (file.isEmpty()) {
-      return ApiEnvelope.error(400, "File is empty");
+      throw new ApiException(400, "File is empty");
     }
 
     String filename = file.getOriginalFilename();
     if (filename == null || (!filename.endsWith(".xls") && !filename.endsWith(".xlsx"))) {
-      return ApiEnvelope.error(400, "Only .xls and .xlsx files are supported");
+      throw new ApiException(400, "Only .xls and .xlsx files are supported");
     }
 
     if (file.getSize() > 10 * 1024 * 1024) {
-      return ApiEnvelope.error(400, "File size exceeds 10MB limit");
+      throw new ApiException(400, "File size exceeds 10MB limit");
     }
 
     UploadResult result = commandService.importFromExcel(file, dataset);

@@ -1,8 +1,10 @@
 package com.homework.asset.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -25,6 +27,7 @@ import java.util.List;
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class ApiSecurityConfig {
 
   private final ApiKeyAuthFilter apiKeyAuthFilter;
@@ -75,24 +78,55 @@ public class ApiSecurityConfig {
                     .authenticated()
                     .anyRequest()
                     .permitAll())
-        .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class)
-        .addFilterAfter(rateLimitFilter, ApiKeyAuthFilter.class);
+        /**
+         * 注册自定义 Filter 到 Spring Security 过滤器链。
+         *
+         * 重要说明（Spring Security 6.x）：
+         * - addFilterBefore(instance, targetClass) 的第二个参数必须是 Spring Security 内置的 Filter Class，
+         *   不能是自定义 Filter（否则会报 "does not have a registered order" 错误）
+         * - 自定义 Filter 的执行顺序通过实现 Ordered 接口的 getOrder() 方法控制
+         * - 两个 Filter 都以 UsernamePasswordAuthenticationFilter.class 为参照点
+         *
+         * 执行顺序：
+         * 1. RateLimitFilter (getOrder = HIGHEST_PRECEDENCE + 50 = 10050) → 先限流
+         * 2. ApiKeyAuthFilter (getOrder = HIGHEST_PRECEDENCE + 100 = 10100) → 再认证
+         * 3. Controller
+         */
+        .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+        .addFilterBefore(apiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
     return http.build();
   }
 
   /**
-   * 创建 CORS 配置源。
-   * 允许配置的源访问 API，支持 GET、POST、DELETE 方法。
-   *
-   * @return CorsConfigurationSource 实例
+   * 禁止 Spring Boot 将 ApiKeyAuthFilter 自动注册为通用 Servlet Filter。
+   * 该 Filter 只能通过 Spring Security 过滤器链执行，否则 OncePerRequestFilter
+   * 的防重复执行机制会导致它在 Security 链中跳过，造成 403。
    */
+  @Bean
+  public FilterRegistrationBean<ApiKeyAuthFilter> apiKeyAuthFilterRegistration(ApiKeyAuthFilter filter) {
+    FilterRegistrationBean<ApiKeyAuthFilter> registration = new FilterRegistrationBean<>(filter);
+    registration.setEnabled(false);
+    return registration;
+  }
+
+  /**
+   * 禁止 Spring Boot 将 RateLimitFilter 自动注册为通用 Servlet Filter。
+   * 原因同上：OncePerRequestFilter 防重复执行机制会导致 Security 链中跳过。
+   */
+  @Bean
+  public FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(RateLimitFilter filter) {
+    FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(filter);
+    registration.setEnabled(false);
+    return registration;
+  }
+
   @Bean
   public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration configuration = new CorsConfiguration();
     configuration.setAllowedOrigins(Arrays.asList(allowedOrigins));
     configuration.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
-    configuration.setAllowedHeaders(List.of("*"));
+    configuration.setAllowedHeaders(List.of("Content-Type", "X-API-Key", "Authorization"));
     configuration.setMaxAge(3600L);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/api/**", configuration);

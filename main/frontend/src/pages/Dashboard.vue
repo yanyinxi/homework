@@ -367,14 +367,11 @@ function handleResize() {
 }
 
 /** 组件挂载时加载所有图表 */
-onMounted(() => {
-  setTimeout(() => {
-    setTimeout(() => {
-      loadQ1()
-      loadQ2()
-      loadQ3()
-    }, 200)
-  }, 100)
+onMounted(async () => {
+  await nextTick()
+  loadQ1()
+  loadQ2()
+  loadQ3()
   window.addEventListener('resize', handleResize)
 })
 

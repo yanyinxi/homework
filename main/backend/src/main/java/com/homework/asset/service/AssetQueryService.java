@@ -52,7 +52,7 @@ public class AssetQueryService {
   public CursorPage<Map<String, Object>> listAssetsByCursor(
       MultiValueMap<String, String> params, String cursor, int pageSize) {
 
-    Map<String, Object> filterParams = parseCursorFilters(params);
+    ParsedQuery query = QueryDslParser.parse(params);
 
     String cursorUploadedAt = null;
     String cursorId = null;
@@ -67,7 +67,7 @@ public class AssetQueryService {
 
     int limit = pageSize + 1;
     List<Map<String, Object>> items =
-        assetMapper.selectByCursor(filterParams, Collections.emptyList(), cursorUploadedAt, cursorId, limit);
+        assetMapper.selectByCursor(query.params(), query.fields(), cursorUploadedAt, cursorId, limit);
 
     String nextCursor = null;
     if (items.size() > pageSize) {
@@ -95,11 +95,6 @@ public class AssetQueryService {
     return assetMapper.selectByDsl(Map.of("id", id), fieldList, List.of(), 1, 0)
         .stream().findFirst()
         .orElseThrow(() -> new ApiException(404, "Asset not found: " + id));
-  }
-
-  private Map<String, Object> parseCursorFilters(MultiValueMap<String, String> params) {
-    ParsedQuery query = QueryDslParser.parse(params);
-    return query.params();
   }
 
   private String[] decodeCursor(String cursor) {

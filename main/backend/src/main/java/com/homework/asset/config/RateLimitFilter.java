@@ -18,24 +18,25 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * 限流过滤器。
- * 
+ *
  * 算法：Bucket4j 令牌桶
- * 
+ *
  * 功能：
  * - API Key 级别限流（识别不同 API Key 消费者）
  * - IP 级别限流（未认证请求按 IP 限流）
  * - 自动清理过期 Bucket（防止内存泄漏）
  * - 返回 X-RateLimit-Remaining header
- * 
+ *
  * 配置：app.rate-limit.requests-per-second（默认 10）
  */
 @Component
-public class RateLimitFilter extends OncePerRequestFilter {
+public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
 
   private static final String API_KEY_HEADER = "X-API-Key";
   private static final String RATE_LIMIT_REMAINING = "X-RateLimit-Remaining";
@@ -52,6 +53,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
    */
   public RateLimitFilter(@Value("${app.rate-limit.requests-per-second:10}") int requestsPerSecond) {
     this.requestsPerSecond = requestsPerSecond;
+  }
+
+  /**
+   * 实现 Ordered 接口，使 Spring Security 能获取 Filter 的执行顺序。
+   * 注：Spring Security 6.x 要求自定义 Filter 必须实现 Ordered 接口，
+   * 才能在 addFilterBefore() 中正确识别顺序。
+   *
+   * @return 优先级数值，值越小越先执行。HIGHEST_PRECEDENCE + 50 表示在最高优先级之后第50位
+   */
+  @Override
+  public int getOrder() {
+    return Ordered.HIGHEST_PRECEDENCE + 50;
   }
 
   /**

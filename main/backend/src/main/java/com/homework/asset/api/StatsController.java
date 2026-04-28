@@ -6,8 +6,11 @@ import com.homework.asset.service.AssetStatsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.util.List;
 import java.util.Map;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
  * - Q3：各投放平台的审核通过率
  */
 @Tag(name = "Stats", description = "素材统计聚合接口（对应作业三条指定查询）")
+@Validated
 @RestController
 @RequestMapping("/api/v1/stats")
 public class StatsController {
@@ -49,9 +53,9 @@ public class StatsController {
   @GetMapping("/top-tags")
   public ApiEnvelope<List<Map<String, Object>>> topTags(
       @Parameter(description = "返回 Top N 标签，默认 5，最大 50", example = "5")
-      @RequestParam(name = "topN", defaultValue = "5") int topN) {
+      @RequestParam(name = "limit", defaultValue = "5") @Min(value = 1, message = "limit must be >= 1") @Max(value = 50, message = "limit must be <= 50") int limit) {
     long start = System.currentTimeMillis();
-    List<Map<String, Object>> result = statsService.topTags(topN);
+    List<Map<String, Object>> result = statsService.topTags(limit);
     metrics.recordStatsRequest(System.currentTimeMillis() - start);
     return ApiEnvelope.ok(result);
   }

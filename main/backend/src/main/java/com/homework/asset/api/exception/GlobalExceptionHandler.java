@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -56,6 +57,19 @@ public class GlobalExceptionHandler {
     log.warn("Resource not found: {}", path);
     return ResponseEntity.status(HttpStatus.NOT_FOUND)
         .body(ApiEnvelope.error(404, "Resource not found: " + path));
+  }
+
+  /**
+   * 方法级 @PreAuthorize 鉴权失败（如 ROLE_USER 调用 ADMIN 接口）。
+   * Spring Security 的 ExceptionTranslationFilter 只处理 URL 级拒绝，
+   * 方法级拒绝会抛出 AuthorizationDeniedException 被此处理器捕获。
+   */
+  @ExceptionHandler(AuthorizationDeniedException.class)
+  public ResponseEntity<ApiEnvelope<Void>> handleAuthorizationDenied(
+      AuthorizationDeniedException ex) {
+    log.warn("Authorization denied: {}", ex.getMessage());
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(ApiEnvelope.error(403, "Permission denied: insufficient role"));
   }
 
   @ExceptionHandler(Exception.class)

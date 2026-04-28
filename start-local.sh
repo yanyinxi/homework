@@ -215,7 +215,7 @@ step "启动后端 (Spring Boot)"
 log "后端日志实时输出如下，等待 /actuator/health 就绪..."
 (
     cd "$ROOT/main/backend"
-    mvn spring-boot:run -Dspring-boot.run.arguments="--ingest=all" 2>&1 | while IFS= read -r line; do
+    mvn clean spring-boot:run -Dspring-boot.run.arguments="--ingest=all" 2>&1 | while IFS= read -r line; do
         echo -e "${CYAN}[BACKEND]${RESET} $line"
     done
 ) &
@@ -259,10 +259,8 @@ echo -e "\n${BOLD}${GREEN}╔═════════════════
 echo -e "║              所有服务已启动！            ║"
 echo -e "╠══════════════════════════════════════════╣"
 echo -e "║  前端管理后台  http://localhost:5173      ║"
-echo -e "║  Swagger UI   http://localhost:8080/     ║"
-echo -e "║               swagger-ui.html            ║"
-echo -e "║  健康检查     http://localhost:8080/     ║"
-echo -e "║               actuator/health            ║"
+echo -e "║  Swagger UI   http://localhost:8080/swagger-ui.html            ║"
+echo -e "║  健康检查     http://localhost:8080/actuator/health            ║"
 echo -e "╠══════════════════════════════════════════╣"
 echo -e "║  按 Ctrl+C 停止所有服务                  ║"
 echo -e "╚══════════════════════════════════════════╝${RESET}\n"

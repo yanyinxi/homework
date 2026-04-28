@@ -53,7 +53,7 @@
           <div class="asset-quick-stats">
             <div class="quick-stat">
               <span class="stat-label">文件大小</span>
-              <span class="stat-value">{{ formatFileSize(asset.fileSizeBytes ?? (asset.file_size_bytes as number | null | undefined)) }}</span>
+              <span class="stat-value">{{ formatFileSize(asset.fileSizeBytes) }}</span>
             </div>
             <div class="quick-stat">
               <span class="stat-label">上传人</span>
@@ -61,7 +61,7 @@
             </div>
             <div class="quick-stat">
               <span class="stat-label">上传时间</span>
-              <span class="stat-value">{{ formatDateTime(asset.uploadedAt ?? (asset.uploaded_at as string | null | undefined)) }}</span>
+              <span class="stat-value">{{ formatDateTime(asset.uploadedAt) }}</span>
             </div>
           </div>
         </div>
@@ -91,10 +91,10 @@
               <el-descriptions-item label="上传人">{{ asset.uploader || '-' }}</el-descriptions-item>
               <el-descriptions-item label="审核人">{{ asset.reviewer || '-' }}</el-descriptions-item>
               <el-descriptions-item label="上传时间">
-                {{ formatDateTime(asset.uploadedAt ?? (asset.uploaded_at as string | null | undefined)) }}
+                {{ formatDateTime(asset.uploadedAt) }}
               </el-descriptions-item>
               <el-descriptions-item label="入库时间">
-                {{ formatDateTime(asset.ingestedAt ?? (asset.ingested_at as string | null | undefined)) }}
+                {{ formatDateTime(asset.ingestedAt) }}
               </el-descriptions-item>
               <el-descriptions-item label="投放平台">{{ asset.platform || '-' }}</el-descriptions-item>
               <el-descriptions-item label="城市">{{ asset.city || '-' }}</el-descriptions-item>
@@ -126,13 +126,13 @@
             </template>
             <el-descriptions :column="1" border size="small">
               <el-descriptions-item label="文件大小">
-                <el-tooltip :content="`${asset.fileSizeBytes ?? (asset.file_size_bytes as number | null | undefined)} bytes`" placement="top">
-                  <span>{{ formatFileSize(asset.fileSizeBytes ?? (asset.file_size_bytes as number | null | undefined)) }}</span>
+                <el-tooltip :content="`${asset.fileSizeBytes ?? 0} bytes`" placement="top">
+                  <span>{{ formatFileSize(asset.fileSizeBytes) }}</span>
                 </el-tooltip>
               </el-descriptions-item>
               <el-descriptions-item label="分辨率">{{ asset.resolution || '-' }}</el-descriptions-item>
               <el-descriptions-item label="时长">
-                {{ formatDuration(asset.durationSec ?? (asset.duration_sec as number | null | undefined)) }}
+                {{ formatDuration(asset.durationSec) }}
               </el-descriptions-item>
             </el-descriptions>
           </el-card>
@@ -144,10 +144,10 @@
             </template>
             <el-descriptions :column="1" border size="small">
               <el-descriptions-item label="数据集">
-                数据集 {{ (asset.sourceDataset ?? asset.source_dataset) || '-' }}
+                数据集 {{ asset.sourceDataset ?? '-' }}
               </el-descriptions-item>
               <el-descriptions-item label="原始ID">
-                {{ (asset.sourceId ?? asset.source_id) || '-' }}
+                {{ asset.sourceId ?? '-' }}
               </el-descriptions-item>
             </el-descriptions>
           </el-card>
@@ -205,16 +205,13 @@ const compactMode = ref(route.query.compact === '1')
 
 // 精简模式展示的字段（不包含溯源/extra）
 const COMPACT_FIELDS = [
-  'id', 'title', 'uploader', 'status', 'uploaded_at',
-  'file_size_bytes', 'tags', 'platform', 'city',
-  // 当前后端 fields 白名单不包含 reviewer/remark/resolution/duration_sec，
-  // compact 模式仅请求可用字段，避免 400 导致详情页整体加载失败
+  'id', 'title', 'uploader', 'status', 'uploadedAt',
+  'fileSizeBytes', 'tags', 'platform', 'city',
 ]
 
-// 便捷访问当前素材（兼容 snake_case 和 camelCase key）
-// 用 Record<string, unknown> 交叉类型，既能访问 AssetSparse 字段也能访问后端可能返回的 snake_case key
-const asset = computed<AssetSparse & Record<string, unknown>>(() => {
-  return (store.currentAsset ?? { id: '' }) as AssetSparse & Record<string, unknown>
+// 便捷访问当前素材
+const asset = computed<AssetSparse>(() => {
+  return store.currentAsset ?? { id: '' }
 })
 
 async function loadAsset() {

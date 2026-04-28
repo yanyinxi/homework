@@ -15,8 +15,8 @@
 | 5 | ~~无监控告警~~ | ✅ **已实现** | Micrometer + Prometheus |
 | 6 | ~~无认证鉴权~~ | ✅ **已实现** | API Key + Bucket4j |
 | 7 | ~~硬编码数据集适配~~ | ✅ **已实现** | JSON 配置驱动 |
-| 8 | 数据验证不完整 | 待优化 | Bean Validation |
-| 9 | extra JSONB 无上限 | 待优化 | 字段提升策略 |
+| 8 | ~~数据验证不完整~~ | ✅ **已实现** | Bean Validation + 前端表单验证 + DLQ |
+| 9 | ~~extra JSONB 无上限~~ | ✅ **已实现** | 64KB 大小检查 + 截断告警 |
 
 ---
 
@@ -345,54 +345,42 @@ app:
 
 ---
 
-## 局限 8：数据验证 — 客户端/服务端校验缺失
+## 局限 8：数据验证 — ✅ 已实现
 
-### 当前实现
+### 已实现内容
 
-- 后端 DSL 解析有字段白名单，但 API 参数的值域验证不完整（如 `file_size_bytes[lte]` 传入负数）
-- 前端 FilterBar 组件缺少输入长度和格式限制
-- ETL 层只对已知错误记录 warn 日志，不生成结构化的验证报告
+**后端 Bean Validation**：
+- `AssetController` + `StatsController` 添加 `@Validated`，参数校验 `@Min`、`@Max`、`@Pattern`（UUID 格式）
+- `AssetCommandController` 已有 `@Validated`，`DeleteBatchRequest` 已有 `@NotEmpty`、`@Size`
+- `Asset` 实体添加字段级校验：`@NotNull`（sourceDataset、fileSizeBytes、uploadedAt）、`@NotBlank`（sourceId、title、uploader）、`@Size`（sourceId/100、title/500、uploader/200、remark/2000）、`@Min(0)`（fileSizeBytes、durationSec）
+- `GlobalExceptionHandler` 统一处理 `MethodArgumentNotValidException` / `ConstraintViolationException`
 
-### 改进方案
+**前端 Form 验证（Element Plus）**：
+- `FilterBar.vue` 添加 `:rules="filterRules"` 绑定
+- `validatePositiveNumber` 自定义校验器（文件大小 >= 0）
+- `validateFileSizeRange` 交叉校验（fileSizeMax >= fileSizeMin）
+- `uploader` 最大 100 字符限制
 
-1. **后端 Bean Validation**：
-```java
-public record ListRequest(
-    @Min(1) @Max(200) Integer pageSize,
-    @Pattern(regexp = "^[a-zA-Z_]+(:(asc|desc))?$") String sort
-) {}
-```
-
-2. **前端 Form 验证（Element Plus Form Validate）**：
-```typescript
-const rules = {
-  fileSizeMin: [{ validator: validatePositiveNumber, trigger: 'blur' }]
-}
-```
-
-3. **ETL 拒绝表（DLQ）**：建独立的 `rejected_records` 表，归一化失败的行写入 DLQ，包含原始数据和错误原因，便于人工复核和重跑。
+**ETL 拒绝表（DLQ）**：
+- `ingest_rejects` 表（V2 migration）存储归一化失败行，含 `raw_record` JSONB
+- `IngestAuditService` 写入拒绝记录
+- API 上传响应 `UploadResult` 包含 `RejectedRecord` 列表
 
 ---
 
-## 局限 9：extra JSONB 无上限
+## 局限 9：extra JSONB 无上限 — ✅ 已实现
 
-### 当前实现
+### 已实现内容
 
-`extra JSONB` 作为 open schema，理论上可以放任意字段和任意大小的值。
+**64KB 大小检查与截断**（`AssetCommandService.importFromExcel`）：
+- `ObjectMapper.writeValueAsBytes(extra)` 序列化后检查大小
+- 超过 64KB 时：`log.warn` 记录 source_id 和实际大小，将 extra 置为 `Map.of()`
+- 序列化失败时同样截断并告警
 
-### 影响
+### 后续演进（未实现）
 
-- 某个字段被频繁查询时，JSONB 路径查询比普通列慢（无法用 B-tree，只能用 `jsonb_path_ops` GIN）
-- JSONB 存储体积比普通列大（有 key 名称冗余）
-- 没有字段级 NOT NULL / 值域约束
-
-### 改进方案
-
-1. **字段提升策略**：当某个 `extra` 中的字段在超过 30% 的记录中出现，且被频繁查询时，通过 `ALTER TABLE ADD COLUMN` 提升为正式列，建 Flyway 迁移脚本。
-
-2. **JSONB Schema 约束（PostgreSQL 16+）**：使用 JSON Schema 验证 `extra` 的结构（仅 PostgreSQL 16 支持）。
-
-3. **大小限制**：在 ETL 层做 `extra` 大小检查，超过阈值（如 64KB）时写入 warn 日志并截断。
+1. **字段提升策略**：当某个 `extra` 中的字段在超过 30% 的记录中出现，且被频繁查询时，通过 `ALTER TABLE ADD COLUMN` 提升为正式列
+2. **JSONB Schema 约束（PostgreSQL 16+）**：使用 JSON Schema 验证 `extra` 的结构
 
 ---
 

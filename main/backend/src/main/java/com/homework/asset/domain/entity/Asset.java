@@ -6,6 +6,10 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import com.homework.asset.config.PgStringArrayTypeHandler;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -19,24 +23,30 @@ public class Asset {
   private UUID id;
 
   /** 数据来源：1=数据集1 / 2=数据集2 / 3=数据集3 */
+  @NotNull
   private Integer sourceDataset;
 
   /** 原始数据集中的 ID（A0001 / asset_001 / vid0001） */
+  @NotBlank @Size(max = 100)
   private String sourceId;
 
   /** 数据导入时间 */
   private Instant ingestedAt;
   
   /** 素材标题 */
+  @NotBlank @Size(max = 500)
   private String title;
   
   /** 上传人名称 */
+  @NotBlank @Size(max = 200)
   private String uploader;
   
   /** 素材上传时间 */
+  @NotNull
   private Instant uploadedAt;
 
   /** 文件大小（字节），所有来源归一到 bytes */
+  @NotNull @Min(0)
   private Long fileSizeBytes;
 
   /** 审核状态：pending / approved / rejected */
@@ -56,12 +66,14 @@ public class Asset {
   private String reviewer;
   
   /** 备注 */
+  @Size(max = 2000)
   private String remark;
   
   /** 分辨率（如 1080p） */
   private String resolution;
   
   /** 时长（秒） */
+  @Min(0)
   private Integer durationSec;
 
   /** 其他稀疏字段（JSONB open schema） */

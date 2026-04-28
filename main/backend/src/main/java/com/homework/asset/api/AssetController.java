@@ -9,8 +9,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Parameters;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import java.util.Map;
 import org.springframework.util.MultiValueMap;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 支持自研 QueryDSL：多字段过滤、排序、稀疏字段投影。
  */
 @Tag(name = "Assets", description = "视频素材数据查询接口")
+@Validated
 @RestController
 @RequestMapping("/api/v1/assets")
 public class AssetController {
@@ -80,7 +84,7 @@ public class AssetController {
   public ApiEnvelope<CursorPage<Map<String, Object>>> listAssetsByCursor(
       @Parameter(hidden = true) @RequestParam MultiValueMap<String, String> allParams,
       @Parameter(description = "游标，首次请求不传") @RequestParam(required = false) String cursor,
-      @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") int page_size) {
+      @Parameter(description = "每页条数") @RequestParam(defaultValue = "20") @Min(value = 1, message = "page_size must be >= 1") int page_size) {
     long start = System.currentTimeMillis();
     CursorPage<Map<String, Object>> result = queryService.listAssetsByCursor(allParams, cursor, Math.min(page_size, 200));
     metrics.recordListRequest(System.currentTimeMillis() - start);
@@ -91,7 +95,7 @@ public class AssetController {
   @GetMapping("/{id}")
   public ApiEnvelope<Map<String, Object>> getAssetById(
       @Parameter(description = "素材 UUID", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-      @PathVariable String id,
+      @PathVariable @Pattern(regexp = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", message = "Invalid UUID format") String id,
       @Parameter(description = "稀疏字段集：仅返回指定列，逗号分隔", example = "title,status,uploader")
       @RequestParam(required = false) String fields) {
     long start = System.currentTimeMillis();

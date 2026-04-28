@@ -34,7 +34,7 @@ const http: AxiosInstance = axios.create({
 
 // ─────────────────── 请求拦截器（添加 API Key）───────────────
 
-const API_KEY = import.meta.env.VITE_API_KEY || 'dev-api-key-001'
+const API_KEY = 'admin-api-key-001'
 
 http.interceptors.request.use((config) => {
   config.headers['X-API-Key'] = API_KEY
@@ -182,6 +182,8 @@ export async function deleteAsset(id: string): Promise<DeleteResult> {
 }
 
 export async function deleteBatch(ids: string[]): Promise<DeleteResult> {
-  const response = await http.delete<ApiEnvelope<DeleteResult>>('/assets/batch', { data: ids })
+  const response = await http.delete<ApiEnvelope<DeleteResult>>('/assets/batch', {
+    data: { ids },
+  })
   return unwrap(response)
 }

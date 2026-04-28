@@ -1,5 +1,6 @@
 package com.homework.asset.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.homework.asset.api.dto.DeleteResult;
 import com.homework.asset.api.dto.UploadResult;
 import com.homework.asset.api.dto.UploadResult.RejectedRecord;
@@ -11,6 +12,7 @@ import com.homework.asset.ingest.adapter.Dataset2Adapter;
 import com.homework.asset.ingest.adapter.Dataset3Adapter;
 import com.homework.asset.ingest.adapter.DatasetAdapter;
 import com.homework.asset.ingest.excel.ExcelReader;
+import com.homework.asset.ingest.normalizer.EtlNormalizeException;
 import com.homework.asset.mapper.AssetMapper;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,6 +40,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class AssetCommandService {
 
   private static final Logger log = LoggerFactory.getLogger(AssetCommandService.class);
+  private static final ObjectMapper objectMapper = new ObjectMapper();
+  private static final int MAX_EXTRA_SIZE_BYTES = 64 * 1024;
 
   private final AssetMapper assetMapper;
   private final IngestBatchService ingestBatchService;
@@ -68,6 +72,19 @@ public class AssetCommandService {
         try {
           Asset asset = adapter.convert(rawRow);
           if (isValidAsset(asset)) {
+            if (asset.getExtra() != null) {
+              try {
+                byte[] extraBytes = objectMapper.writeValueAsBytes(asset.getExtra());
+                if (extraBytes.length > MAX_EXTRA_SIZE_BYTES) {
+                  log.warn("Extra JSONB exceeds {} bytes ({} bytes), truncating for source_id={}",
+                      MAX_EXTRA_SIZE_BYTES, extraBytes.length, asset.getSourceId());
+                  asset.setExtra(Map.of());
+                }
+              } catch (IOException e) {
+                log.warn("Failed to serialize extra JSONB for source_id={}, truncating", asset.getSourceId());
+                asset.setExtra(Map.of());
+              }
+            }
             validAssets.add(asset);
           } else {
             rejectedRecords.add(new RejectedRecord(
@@ -75,7 +92,7 @@ public class AssetCommandService {
                 asset.getSourceId(),
                 "Missing required field: title, uploader, or status"));
           }
-        } catch (Exception e) {
+        } catch (EtlNormalizeException | IllegalArgumentException e) {
           rejectedRecords.add(new RejectedRecord(
               i + 2,
               String.valueOf(rawRow.getOrDefault("素材编号", rawRow.getOrDefault("asset_id", rawRow.getOrDefault("素材id", "unknown")))),
@@ -147,8 +164,12 @@ public class AssetCommandService {
 
     List<String> notFoundIds = new ArrayList<>();
     if (deleted < uniqueIds.size()) {
+      List<UUID> uuids = uniqueIds.stream().map(UUID::fromString).toList();
+      Set<String> existingIdStrs = assetMapper.selectBatchIds(uuids).stream()
+          .map(a -> a.getId().toString())
+          .collect(java.util.stream.Collectors.toSet());
       for (String id : uniqueIds) {
-        if (assetMapper.selectById(UUID.fromString(id)) == null) {
+        if (!existingIdStrs.contains(id)) {
           notFoundIds.add(id);
         }
       }

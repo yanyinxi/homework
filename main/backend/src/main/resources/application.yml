@@ -12,7 +12,7 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:asset_db}
     username: ${DB_USERNAME:asset}
-    password: ${DB_PASSWORD:asset123}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       pool-name: AssetHikariPool
@@ -52,7 +52,7 @@ management:
         include: health,info,prometheus,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
     info:
       enabled: true
   info:

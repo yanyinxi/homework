@@ -37,7 +37,18 @@ export function parsePrometheusText(text: string): PrometheusMetric[] {
 
     const name = match[1]
     const labelsStr = match[2] || ''
-    const value = parseFloat(match[3])
+    // 处理 Prometheus 特殊浮点值：+Inf, -Inf, NaN
+    let value: number
+    const rawValue = match[3].trim()
+    if (rawValue === '+Inf') {
+      value = Infinity
+    } else if (rawValue === '-Inf') {
+      value = -Infinity
+    } else if (rawValue === 'NaN') {
+      value = Number.NaN
+    } else {
+      value = parseFloat(rawValue)
+    }
 
     // 解析标签 {label1="value1",label2="value2"}
     const labels: Record<string, string> = {}
@@ -129,41 +140,64 @@ export function extractBusinessMetrics(metrics: PrometheusMetric[]): BusinessMet
     })
   }
 
-  // API 延迟统计（Summary 类型：使用 _sum / _count 计算平均值）
+  // API 延迟统计（Summary 类型：提取真实分位数 + 计算平均值）
   const apiLatency: BusinessMetrics['apiLatency'] = []
-  const latencyByEndpoint = new Map<string, { sum: number; count: number }>()
-
+  // Step 1: 收集 _sum / _count 用于计算 avg
+  const sumCountByEndpoint = new Map<string, { sum: number; count: number }>()
   for (const m of metrics) {
     if (m.name === 'asset_api_duration_seconds_sum') {
-      const endpoint = m.labels.endpoint || 'unknown'
-      if (!latencyByEndpoint.has(endpoint)) {
-        latencyByEndpoint.set(endpoint, { sum: 0, count: 0 })
-      }
-      latencyByEndpoint.get(endpoint)!.sum = m.value
+      const ep = m.labels.endpoint || 'unknown'
+      if (!sumCountByEndpoint.has(ep)) sumCountByEndpoint.set(ep, { sum: 0, count: 0 })
+      sumCountByEndpoint.get(ep)!.sum = m.value
     }
     if (m.name === 'asset_api_duration_seconds_count') {
-      const endpoint = m.labels.endpoint || 'unknown'
-      if (!latencyByEndpoint.has(endpoint)) {
-        latencyByEndpoint.set(endpoint, { sum: 0, count: 0 })
-      }
-      latencyByEndpoint.get(endpoint)!.count = m.value
+      const ep = m.labels.endpoint || 'unknown'
+      if (!sumCountByEndpoint.has(ep)) sumCountByEndpoint.set(ep, { sum: 0, count: 0 })
+      sumCountByEndpoint.get(ep)!.count = m.value
     }
   }
 
-  for (const [endpoint, data] of latencyByEndpoint) {
-    const avg = data.count > 0 ? (data.sum / data.count) * 1000 : 0 // 转换为毫秒
-    apiLatency.push({
-      endpoint,
-      p50: avg,  // Summary 类型没有分位数，用平均值代替
-      p95: avg * 1.5,
-      p99: avg * 2,
-      avg,
-    })
+  // Step 2: 提取真实 Prometheus Summary 分位数
+  // 真实格式: asset_api_duration_seconds{endpoint="list",quantile="0.95"} 0.089
+  const quantileByEndpoint = new Map<string, Map<string, number>>()
+  for (const m of metrics) {
+    if (m.name === 'asset_api_duration_seconds' && m.labels.quantile) {
+      const ep = m.labels.endpoint || 'unknown'
+      if (!quantileByEndpoint.has(ep)) quantileByEndpoint.set(ep, new Map())
+      quantileByEndpoint.get(ep)!.set(m.labels.quantile, m.value)
+    }
   }
 
-  // 慢查询统计
-  const slowQueryMetric = metrics.find(m => m.name === 'db_slow_queries_total')
-  const slowQueries = slowQueryMetric ? slowQueryMetric.value : 0
+  // Step 3: 汇总每个 endpoint 的延迟数据
+  const allEndpoints = new Set<string>()
+  for (const ep of sumCountByEndpoint.keys()) allEndpoints.add(ep)
+  for (const ep of quantileByEndpoint.keys()) allEndpoints.add(ep)
+
+  for (const endpoint of allEndpoints) {
+    const sc = sumCountByEndpoint.get(endpoint) || { sum: 0, count: 0 }
+    const avg = sc.count > 0 ? (sc.sum / sc.count) * 1000 : 0 // 转换为毫秒
+
+    const qm = quantileByEndpoint.get(endpoint)
+    // 从真实分位数中提取 P50/P95/P99，并转换为毫秒
+    const getQuantile = (q: string): number => {
+      if (!qm || !qm.has(q)) return 0
+      const v = qm.get(q)!
+      return Number.isFinite(v) ? v * 1000 : 0
+    }
+
+    // 如果 Prometheus 没有上报该分位数，回退到用平均值估算（仅在有 sum/count 数据时）
+    const hasRealQuantiles = qm && qm.size > 0
+    const p50 = hasRealQuantiles ? getQuantile('0.5') : avg
+    const p95 = hasRealQuantiles ? getQuantile('0.95') : (sc.count > 0 ? avg * 1.5 : 0)
+    const p99 = hasRealQuantiles ? getQuantile('0.99') : (sc.count > 0 ? avg * 2 : 0)
+
+    apiLatency.push({ endpoint, p50, p95, p99, avg })
+  }
+
+  // 慢查询统计：聚合所有 db_slow_queries_total 样本（可能按不同标签分组）
+  const slowQueries = metrics
+    .filter(m => m.name === 'db_slow_queries_total')
+    .reduce((sum, m) => (Number.isFinite(m.value) ? sum + m.value : sum), 0)
 
   // JVM 内存（按 area="heap" 聚合）
   let jvmUsed = 0

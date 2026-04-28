@@ -235,9 +235,9 @@
                     <div class="tooltip-item">
                       <strong>计算逻辑：</strong>
                       <ul style="margin: 4px 0; padding-left: 16px;">
-                        <li>P50 = 平均值（Summary 类型无分位数）</li>
-                        <li>P95 = 平均值 × 1.5（估算）</li>
-                        <li>P99 = 平均值 × 2（估算）</li>
+                        <li>P50/P95/P99 = 从 Prometheus Summary quantile 标签提取</li>
+                        <li>avg = _sum / _count × 1000（转毫秒）</li>
+                        <li>若无 quantile 数据，回退为 avg\1.5/avg\2 估算</li>
                       </ul>
                     </div>
                     <div class="tooltip-item">
@@ -583,7 +583,6 @@ interface AlertRecord {
   }
 }
 
-const baseUrl = 'http://localhost:8080'
 const loading = ref(false)
 const autoRefresh = ref(false)
 const lastUpdate = ref('')
@@ -1211,19 +1210,19 @@ function renderLatencyChart() {
       {
         name: 'P50',
         type: 'bar',
-        data: data.map(l => l.p50.toFixed(2)),
+        data: data.map(l => parseFloat(l.p50.toFixed(2))),
         itemStyle: { color: '#10b981' },
       },
       {
         name: 'P95',
         type: 'bar',
-        data: data.map(l => l.p95.toFixed(2)),
+        data: data.map(l => parseFloat(l.p95.toFixed(2))),
         itemStyle: { color: '#f59e0b' },
       },
       {
         name: 'P99',
         type: 'bar',
-        data: data.map(l => l.p99.toFixed(2)),
+        data: data.map(l => parseFloat(l.p99.toFixed(2))),
         itemStyle: { color: '#ef4444' },
       },
     ],
@@ -1306,7 +1305,7 @@ async function refreshMetrics() {
 }
 
 function openUrl(path: string) {
-  window.open(baseUrl + path, '_blank')
+  window.open(path, '_blank')
 }
 
 watch(autoRefresh, (enabled) => {
