@@ -39,9 +39,7 @@ public class IngestBatchService {
     for (int i = 0; i < assets.size(); i += CHUNK_SIZE) {
       int end = Math.min(i + CHUNK_SIZE, assets.size());
       List<Asset> chunk = assets.subList(i, end);
-      for (Asset asset : chunk) {
-        assetMapper.upsert(asset);
-      }
+      assetMapper.upsertBatch(chunk);
     }
     log.info("数据集 {} 批次提交，共 upsert {} 条", datasetNum, assets.size());
     return assets.size();
@@ -55,15 +53,16 @@ public class IngestBatchService {
     int updated = 0;
     for (int i = 0; i < assets.size(); i += CHUNK_SIZE) {
       int end = Math.min(i + CHUNK_SIZE, assets.size());
-      for (Asset asset : assets.subList(i, end)) {
+      List<Asset> chunk = assets.subList(i, end);
+      for (Asset asset : chunk) {
         String key = asset.getSourceDataset() + ":" + asset.getSourceId();
         if (existingKeys.contains(key)) {
           updated++;
         } else {
           inserted++;
         }
-        assetMapper.upsert(asset);
       }
+      assetMapper.upsertBatch(chunk);
     }
 
     log.info("数据集 {} 批次提交：新增 {} 条，更新 {} 条", datasetNum, inserted, updated);

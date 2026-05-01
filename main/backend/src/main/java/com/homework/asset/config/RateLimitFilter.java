@@ -156,20 +156,72 @@ public class RateLimitFilter extends OncePerRequestFilter implements Ordered {
   /**
    * 获取客户端真实 IP。
    * 依次检查 X-Forwarded-For、X-Real-IP、RemoteAddr。
+   * X-Forwarded-For 伪造检测：若第一段 IP 属于私有/回环地址段，则降级到后续 Header。
    *
    * @param request HTTP 请求对象
    * @return 客户端 IP 地址
    */
   private String getClientIp(HttpServletRequest request) {
-    String xForwardedFor = request.getHeader("X-Forwarded-For");
-    if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-      return xForwardedFor.split(",")[0].trim();
+    String xff = request.getHeader("X-Forwarded-For");
+    if (xff != null && !xff.isEmpty()) {
+      String first = xff.split(",")[0].trim();
+      if (isValidPublicIp(first)) {
+        return first;
+      }
     }
     String xRealIp = request.getHeader("X-Real-IP");
     if (xRealIp != null && !xRealIp.isEmpty()) {
       return xRealIp;
     }
     return request.getRemoteAddr();
+  }
+
+  /**
+   * 验证 IP 是否为有效公网 IP。
+   * 排除私有地址段（10.0.0.0/8、172.16.0.0/12、192.168.0.0/16）和回环地址（127.0.0.0/8）。
+   *
+   * @param ip 待验证的 IP 地址字符串
+   * @return true 表示公网 IP，false 表示私有/回环 IP（应降级）
+   */
+  private boolean isValidPublicIp(String ip) {
+    if (ip == null || ip.isEmpty()) {
+      return false;
+    }
+    try {
+      long ipLong = ipToLong(ip);
+      // 127.0.0.0/8 — loopback
+      if (inRange(ipLong, ipToLong("127.0.0.0"), ipToLong("127.255.255.255"))) {
+        return false;
+      }
+      // 10.0.0.0/8
+      if (inRange(ipLong, ipToLong("10.0.0.0"), ipToLong("10.255.255.255"))) {
+        return false;
+      }
+      // 172.16.0.0/12
+      if (inRange(ipLong, ipToLong("172.16.0.0"), ipToLong("172.31.255.255"))) {
+        return false;
+      }
+      // 192.168.0.0/16
+      if (inRange(ipLong, ipToLong("192.168.0.0"), ipToLong("192.168.255.255"))) {
+        return false;
+      }
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private long ipToLong(String ip) {
+    String[] parts = ip.split("\\.");
+    long result = 0;
+    for (int i = 0; i < 4; i++) {
+      result = (result << 8) | Integer.parseInt(parts[i]);
+    }
+    return result;
+  }
+
+  private boolean inRange(long ip, long start, long end) {
+    return ip >= start && ip <= end;
   }
 
   /**

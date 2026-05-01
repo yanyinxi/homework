@@ -178,7 +178,7 @@
               </el-tooltip>
             </div>
           </template>
-          <div id="request-pie-chart" class="chart-container"></div>
+          <div ref="requestPieChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
 
@@ -213,7 +213,7 @@
               </el-tooltip>
             </div>
           </template>
-          <div id="request-bar-chart" class="chart-container"></div>
+          <div ref="requestBarChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
@@ -255,7 +255,7 @@
               </el-tooltip>
             </div>
           </template>
-          <div id="latency-chart" class="chart-container"></div>
+          <div ref="latencyChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
 
@@ -295,7 +295,7 @@
               </el-tooltip>
             </div>
           </template>
-          <div id="connection-chart" class="chart-container"></div>
+          <div ref="connectionChartRef" class="chart-container"></div>
           <div class="connection-detail" v-if="businessMetrics">
             <el-row :gutter="20">
               <el-col :span="8">
@@ -583,16 +583,29 @@ interface AlertRecord {
   }
 }
 
+// Chart refs
+const requestPieChartRef = ref<HTMLDivElement | null>(null)
+const requestBarChartRef = ref<HTMLDivElement | null>(null)
+const latencyChartRef = ref<HTMLDivElement | null>(null)
+const connectionChartRef = ref<HTMLDivElement | null>(null)
+
 const loading = ref(false)
 const autoRefresh = ref(false)
 const lastUpdate = ref('')
 const businessMetrics = ref<BusinessMetrics | null>(null)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
-let requestPieChart: ECharts | null = null
-let requestBarChart: ECharts | null = null
-let latencyChart: ECharts | null = null
-let connectionChart: ECharts | null = null
+// ─────────────────── 图表实例管理器 ───────────────────
+const chartInstances = new Map<string, ECharts>()
+
+/** 获取或创建图表实例（复用已有实例） */
+function getOrCreateChart(el: HTMLElement): ECharts {
+  const existing = chartInstances.get(el.id)
+  if (existing) return existing
+  const instance = window.echarts.init(el)
+  chartInstances.set(el.id, instance)
+  return instance
+}
 
 // 告警规则配置
 const ALERT_RULES = {
@@ -1078,7 +1091,7 @@ function renderCharts() {
 }
 
 function renderRequestPieChart() {
-  const container = document.querySelector('#request-pie-chart') as HTMLElement
+  const container = requestPieChartRef.value
   if (!container) return
 
   if (requestPieChart) {
@@ -1124,7 +1137,7 @@ function renderRequestPieChart() {
 }
 
 function renderRequestBarChart() {
-  const container = document.querySelector('#request-bar-chart') as HTMLElement
+  const container = requestBarChartRef.value
   if (!container) return
 
   if (requestBarChart) {
@@ -1170,7 +1183,7 @@ function renderRequestBarChart() {
 }
 
 function renderLatencyChart() {
-  const container = document.querySelector('#latency-chart') as HTMLElement
+  const container = latencyChartRef.value
   if (!container) return
 
   if (latencyChart) {
@@ -1230,7 +1243,7 @@ function renderLatencyChart() {
 }
 
 function renderConnectionChart() {
-  const container = document.querySelector('#connection-chart') as HTMLElement
+  const container = connectionChartRef.value
   if (!container) return
 
   if (connectionChart) {

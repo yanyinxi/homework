@@ -33,6 +33,13 @@ public interface AssetMapper extends BaseMapper<Asset> {
    */
   int upsert(Asset asset);
 
+  /**
+   * 批量幂等 upsert。
+   * 使用 PostgreSQL ON CONFLICT DO UPDATE 语法，配合 MyBatis BatchExecutor 减少数据库往返。
+   * 调用方需在 Service 层使用 @Transactional 确保原子性。
+   */
+  int upsertBatch(List<Asset> assets);
+
   /** Q1：审核已通过素材中，各上传人的平均文件大小。 */
   List<Map<String, Object>> selectUploaderAvgSize();
 

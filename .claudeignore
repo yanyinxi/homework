@@ -1,0 +1,16 @@
+# Claude Code — 排除扫描
+node_modules/
+dist/
+build/
+target/
+__pycache__/
+*.pyc
+.venv/
+vendor/
+.git/
+*.lock
+*.log
+coverage/
+.next/
+.cache/
+*.min.js

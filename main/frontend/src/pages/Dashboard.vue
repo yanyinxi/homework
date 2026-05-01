@@ -33,7 +33,7 @@
           <div v-else-if="q1Error" class="chart-error">
             <el-empty :description="q1Error" />
           </div>
-          <div v-else id="q1-chart" class="chart-container" style="height: 340px" />
+          <div v-else id="q1-chart" ref="q1ChartRef" class="chart-container" style="height: 340px" />
         </el-card>
       </el-col>
 
@@ -60,7 +60,7 @@
           <div v-else-if="q2Error" class="chart-error">
             <el-empty :description="q2Error" />
           </div>
-          <div v-else id="q2-chart" class="chart-container" style="height: 340px" />
+          <div v-else id="q2-chart" ref="q2ChartRef" class="chart-container" style="height: 340px" />
         </el-card>
       </el-col>
 
@@ -87,7 +87,7 @@
           <div v-else-if="q3Error" class="chart-error">
             <el-empty :description="q3Error" />
           </div>
-          <div v-else id="q3-chart" class="chart-container" style="height: 340px" />
+          <div v-else id="q3-chart" ref="q3ChartRef" class="chart-container" style="height: 340px" />
         </el-card>
       </el-col>
     </el-row>
@@ -121,20 +121,27 @@ declare global {
   }
 }
 
+// ─────────────────── 图表实例管理器 ───────────────────
+
+const chartInstances = new Map<string, ECharts>()
+
+/** 获取或创建图表实例（复用已有实例） */
+function getOrCreateChart(el: HTMLElement): ECharts {
+  const existing = chartInstances.get(el.id)
+  if (existing) return existing
+  const instance = window.echarts.init(el)
+  chartInstances.set(el.id, instance)
+  return instance
+}
+
 // ─────────────────── Q1：各上传人平均文件大小 ───────────────
 
 const q1ChartRef = ref<HTMLDivElement | null>(null)
 const q1Loading = ref(false)
 const q1Error = ref('')
-let q1Chart: ECharts | null = null
 
 /** 加载并渲染 Q1 查询结果 */
 async function loadQ1() {
-  // 刷新时容器会因 v-if 重建，必须销毁旧实例避免绑定到失效 DOM
-  if (q1Chart) {
-    q1Chart.dispose()
-    q1Chart = null
-  }
   q1Loading.value = true
   q1Error.value = ''
   try {
@@ -156,17 +163,15 @@ async function loadQ1() {
 
 /** 绘制 Q1 柱状图 */
 function renderQ1Chart(data: UploaderAvgSize[]) {
-  const container = document.querySelector('#q1-chart') as HTMLElement | null
+  const container = q1ChartRef.value
   if (!container) return
 
-  if (!q1Chart) {
-    q1Chart = window.echarts.init(container)
-  }
+  const chart = getOrCreateChart(container)
 
   const uploaders = data.map((d) => String(d.uploader ?? '未知'))
   const sizes = data.map((d) => Number(d.avgSizeBytes ?? 0))
-  
-  q1Chart.setOption({
+
+  chart.setOption({
     title: { text: '各上传人平均文件大小', left: 'center' },
     tooltip: { trigger: 'axis' },
     xAxis: { type: 'category', data: uploaders },
@@ -180,14 +185,9 @@ function renderQ1Chart(data: UploaderAvgSize[]) {
 const q2ChartRef = ref<HTMLDivElement | null>(null)
 const q2Loading = ref(false)
 const q2Error = ref('')
-let q2Chart: ECharts | null = null
 
 /** 加载并渲染 Q2 查询结果 */
 async function loadQ2() {
-  if (q2Chart) {
-    q2Chart.dispose()
-    q2Chart = null
-  }
   q2Loading.value = true
   q2Error.value = ''
   try {
@@ -204,19 +204,17 @@ async function loadQ2() {
 
 /** 绘制 Q2 饼图 */
 function renderQ2Chart(data: TopTag[]) {
-  const container = document.querySelector('#q2-chart') as HTMLElement | null
+  const container = q2ChartRef.value
   if (!container) return
 
-  if (!q2Chart) {
-    q2Chart = window.echarts.init(container)
-  }
+  const chart = getOrCreateChart(container)
 
   const pieData = data.map((d) => ({
     name: String(d.tag ?? '未知'),
     value: Number(d.count ?? 0),
   }))
 
-  q2Chart.setOption({
+  chart.setOption({
     tooltip: {
       trigger: 'item',
       formatter: '{b}: {c} ({d}%)',
@@ -254,14 +252,9 @@ function renderQ2Chart(data: TopTag[]) {
 const q3ChartRef = ref<HTMLDivElement | null>(null)
 const q3Loading = ref(false)
 const q3Error = ref('')
-let q3Chart: ECharts | null = null
 
 /** 加载并渲染 Q3 查询结果 */
 async function loadQ3() {
-  if (q3Chart) {
-    q3Chart.dispose()
-    q3Chart = null
-  }
   q3Loading.value = true
   q3Error.value = ''
   try {
@@ -278,19 +271,17 @@ async function loadQ3() {
 
 /** 绘制 Q3 分组柱状图 + 通过率折线 */
 function renderQ3Chart(data: PlatformApproval[]) {
-  const container = document.querySelector('#q3-chart') as HTMLElement | null
+  const container = q3ChartRef.value
   if (!container) return
 
-  if (!q3Chart) {
-    q3Chart = window.echarts.init(container)
-  }
+  const chart = getOrCreateChart(container)
 
   const platforms = data.map((d) => String(d.platform ?? '未知'))
   const totals = data.map((d) => Number(d.total ?? 0))
   const approveds = data.map((d) => Number(d.approved ?? 0))
   const rates = data.map((d) => parseFloat(Number(d.approvalRate ?? 0).toFixed(2)))
 
-  q3Chart.setOption({
+  chart.setOption({
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -359,11 +350,9 @@ function renderQ3Chart(data: PlatformApproval[]) {
   })
 }
 
-/** 响应窗口大小变化，同步调整图表 */
+/** 统一 resize 处理 */
 function handleResize() {
-  q1Chart?.resize()
-  q2Chart?.resize()
-  q3Chart?.resize()
+  chartInstances.forEach((instance) => instance.resize())
 }
 
 /** 组件挂载时加载所有图表 */
@@ -378,9 +367,8 @@ onMounted(async () => {
 /** 组件卸载时销毁图表实例 */
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  q1Chart?.dispose()
-  q2Chart?.dispose()
-  q3Chart?.dispose()
+  chartInstances.forEach((instance) => instance.dispose())
+  chartInstances.clear()
 })
 </script>
 

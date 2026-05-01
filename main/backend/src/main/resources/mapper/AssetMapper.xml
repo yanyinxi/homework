@@ -127,6 +127,42 @@
             ingested_at     = now()
     </insert>
 
+    <!-- 批量 upsert：每条记录独立 INSERT，单次 DB 往返完成批量写入 -->
+    <insert id="upsertBatch">
+        <foreach collection="assets" item="asset" separator="">
+            INSERT INTO assets
+            (source_dataset, source_id, title, uploader, uploaded_at,
+             file_size_bytes, status, tags, city, platform, reviewer, remark,
+             resolution, duration_sec, extra, raw_record)
+            VALUES
+            (#{asset.sourceDataset}, #{asset.sourceId}, #{asset.title}, #{asset.uploader},
+             #{asset.uploadedAt},
+             #{asset.fileSizeBytes}, #{asset.status},
+             #{asset.tags, typeHandler=com.homework.asset.config.PgStringArrayTypeHandler},
+             #{asset.city}, #{asset.platform}, #{asset.reviewer}, #{asset.remark},
+             #{asset.resolution}, #{asset.durationSec},
+             #{asset.extra, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler}::jsonb,
+             #{asset.rawRecord, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler}::jsonb)
+            ON CONFLICT (source_dataset, source_id)
+            DO UPDATE SET
+                title           = EXCLUDED.title,
+                uploader        = EXCLUDED.uploader,
+                uploaded_at     = EXCLUDED.uploaded_at,
+                file_size_bytes = EXCLUDED.file_size_bytes,
+                status          = EXCLUDED.status,
+                tags            = EXCLUDED.tags,
+                city            = EXCLUDED.city,
+                platform        = EXCLUDED.platform,
+                reviewer        = EXCLUDED.reviewer,
+                remark          = EXCLUDED.remark,
+                resolution      = EXCLUDED.resolution,
+                duration_sec    = EXCLUDED.duration_sec,
+                extra           = EXCLUDED.extra,
+                raw_record      = EXCLUDED.raw_record,
+                ingested_at     = now();
+        </foreach>
+    </insert>
+
     <!-- Q1：审核通过素材，各上传人平均文件大小 -->
     <select id="selectUploaderAvgSize" resultType="java.util.Map">
         SELECT uploader,
